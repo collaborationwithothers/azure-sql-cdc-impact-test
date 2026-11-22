@@ -23,6 +23,10 @@ public sealed record Options
     public int MaxPoolSize { get; init; } = 200;
     public int CommandTimeoutSeconds { get; init; } = 30;
     public string? Output { get; init; }
+    /// <summary>on (default) or off. Off lets a targeted pass measure telemetry overhead.</summary>
+    public bool Telemetry { get; init; } = true;
+    /// <summary>Labels attached to telemetry, for example run id, configuration and step.</summary>
+    public Dictionary<string, object> Labels { get; init; } = [];
 
     public static Options Parse(string[] args)
     {
@@ -49,11 +53,20 @@ public sealed record Options
                 "--max-pool" => o with { MaxPoolSize = int.Parse(v) },
                 "--command-timeout" => o with { CommandTimeoutSeconds = int.Parse(v) },
                 "--output" => o with { Output = v },
+                "--telemetry" => o with { Telemetry = v switch { "on" => true, "off" => false, _ => throw new ArgumentException("--telemetry on|off") } },
+                "--label" => o with { Labels = AddLabel(o.Labels, v) },
                 _ => throw new ArgumentException($"Unknown option {args[i]}\n{Usage}"),
             };
         }
         o.Validate();
         return o;
+    }
+
+    private static Dictionary<string, object> AddLabel(Dictionary<string, object> labels, string kv)
+    {
+        var eq = kv.IndexOf('=');
+        if (eq <= 0) throw new ArgumentException("--label key=value");
+        return new Dictionary<string, object>(labels) { [kv[..eq]] = kv[(eq + 1)..] };
     }
 
     private void Validate()
@@ -90,5 +103,6 @@ public sealed record Options
         loadgen window --server S --database D --transaction update|update-outbox --rate N --warmup S --measure S --max-task-id N [options]
         loadgen steady --server S --database D --transaction update|update-outbox --rate N --window S --max-task-id N --output FILE [options]
         options: --client-id ID --connection-string CS --payload-chars N --payload-type nvarchar(max)|varchar(max) --max-pool N --command-timeout S
+                 --telemetry on|off --label key=value (repeatable). Telemetry goes to APPLICATIONINSIGHTS_CONNECTION_STRING if set.
         """;
 }

@@ -1,50 +1,54 @@
-using CdcImpact.Collector;
-using CdcImpact.Common;
+using System.Diagnostics;
+using System.Text.Json;
 using CdcImpact.LoadGen;
 using Microsoft.Data.SqlClient;
+using OpenTelemetry;
+using OpenTelemetry.Trace;
 using Testcontainers.MsSql;
 using Xunit;
 
 namespace CdcImpact.Tests.Containers;
 
 /// <summary>
-/// Starts one SQL Server container with SQL Server Agent on (CDC capture on
-/// SQL Server needs it; Azure SQL Database uses its own scheduler).
-/// A container has no elastic pool and no resource governance: these tests
-/// prove mechanics only, never performance.
+/// SQL Server in a container. It has no elastic pool and no resource
+/// governance: these tests prove the load generator's mechanics, never its
+/// performance. CDC, seeding and the collector are tested in tests/rig.
 /// </summary>
 public sealed class SqlServerFixture : IAsyncLifetime
 {
-    public MsSqlContainer Container { get; } = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
-        .WithEnvironment("MSSQL_AGENT_ENABLED", "true")
-        .Build();
+    public MsSqlContainer Container { get; } = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
 
-    public RunSettings Settings { get; private set; } = new();
+    public static string RepoRoot
+    {
+        get
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "CdcImpact.slnx"))) dir = dir.Parent;
+            return dir?.FullName ?? throw new InvalidOperationException("repo root not found");
+        }
+    }
+
+    public string ConnectionString { get; private set; } = "";
 
     public async ValueTask InitializeAsync()
     {
         await Container.StartAsync();
-        var master = new SqlConnectionStringBuilder(Container.GetConnectionString()) { InitialCatalog = "master" };
+        var master = new SqlConnectionStringBuilder(Container.GetConnectionString()) { InitialCatalog = "master", TrustServerCertificate = true };
         await using (var conn = new SqlConnection(master.ConnectionString))
         {
             await conn.OpenAsync();
-            await conn.ExecAsync("IF DB_ID('cdcdb1') IS NULL CREATE DATABASE cdcdb1; IF DB_ID('cdcdb2') IS NULL CREATE DATABASE cdcdb2;", CancellationToken.None);
+            await new SqlCommand("IF DB_ID('loadgendb') IS NULL CREATE DATABASE loadgendb;", conn).ExecuteNonQueryAsync();
         }
-        var template = new SqlConnectionStringBuilder(Container.GetConnectionString()) { InitialCatalog = "{db}", TrustServerCertificate = true };
-        Settings = new RunSettings
-        {
-            RunId = "container-test",
-            ConnectionStringTemplate = template.ConnectionString,
-            ResultsDirectory = Path.Combine(Path.GetTempPath(), "cdc-impact-tests"),
-        };
-        var schema = SqlScripts.Load("schema.sql").Replace("{{PAYLOAD_TYPE}}", "nvarchar(max)");
-        foreach (var db in new[] { "cdcdb1", "cdcdb2" })
-        {
-            await using var c = await new SqlConnections(Settings).OpenAsync(db, CancellationToken.None);
-            await c.ExecAsync(schema, CancellationToken.None);
-            await c.ExecAsync(schema, CancellationToken.None); // idempotent
-            await c.ExecAsync(SqlScripts.Load("seed-batch.sql"), CancellationToken.None, 600, ("@from", 0L), ("@to", 20_000L), ("@matters", 100));
-        }
+        ConnectionString = new SqlConnectionStringBuilder(master.ConnectionString) { InitialCatalog = "loadgendb" }.ConnectionString;
+        await using var db = new SqlConnection(ConnectionString);
+        await db.OpenAsync();
+        var schema = (await File.ReadAllTextAsync(Path.Combine(RepoRoot, "sql", "schema.sql"))).Replace("{{PAYLOAD_TYPE}}", "nvarchar(max)");
+        await new SqlCommand(schema, db).ExecuteNonQueryAsync();
+        var seed = new SqlCommand(await File.ReadAllTextAsync(Path.Combine(RepoRoot, "sql", "seed-batch.sql")), db);
+        seed.Parameters.AddWithValue("@from", 0L);
+        seed.Parameters.AddWithValue("@to", 20_000L);
+        seed.Parameters.AddWithValue("@matters", 100);
+        await seed.ExecuteNonQueryAsync();
     }
 
     public async ValueTask DisposeAsync() => await Container.DisposeAsync();
@@ -54,126 +58,88 @@ public sealed class SqlServerFixture : IAsyncLifetime
 public sealed class SqlCollection : ICollectionFixture<SqlServerFixture>;
 
 [Collection("sql")]
-public sealed class SqlServerTests(SqlServerFixture fx)
+public sealed class LoadGenSqlTests(SqlServerFixture fx)
 {
-    private SqlConnections Connections => new(fx.Settings);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    [Fact]
-    public async Task Seed_batch_inserts_contiguous_ids()
+    private async Task<long> ScalarAsync(string sql)
     {
-        await using var conn = await Connections.OpenAsync("cdcdb2", Ct);
-        Assert.Equal(20_000L, await conn.ScalarAsync<long>("SELECT COUNT_BIG(*) FROM dbo.Task", Ct));
-        Assert.Equal(20_000L, await conn.ScalarAsync<long>("SELECT MAX(TaskId) FROM dbo.Task", Ct));
+        await using var conn = new SqlConnection(fx.ConnectionString);
+        await conn.OpenAsync(Ct);
+        return Convert.ToInt64(await new SqlCommand(sql, conn).ExecuteScalarAsync(Ct));
     }
 
     [Theory]
-    [InlineData(Configuration.A, 0)]
-    [InlineData(Configuration.B, 1)]
-    public async Task Transaction_updates_task_and_writes_outbox_only_for_B(Configuration configuration, int outboxRowsPerTx)
+    [InlineData(Transaction.UpdateOnly, 0)]
+    [InlineData(Transaction.UpdateAndOutbox, 1)]
+    public async Task Transaction_writes_outbox_only_when_asked(Transaction transaction, int outboxRowsPerTx)
     {
-        await using var conn = await Connections.OpenAsync("cdcdb2", Ct);
-        var before = await conn.ScalarAsync<long>("SELECT COUNT_BIG(*) FROM dbo.Outbox", Ct);
-        var w = new TaskWorkload(Connections.ConnectionString("cdcdb2"), configuration, 20_000, 4096, "nvarchar(max)", 30);
+        var before = await ScalarAsync("SELECT COUNT_BIG(*) FROM dbo.Outbox");
+        var w = new TaskWorkload(fx.ConnectionString, transaction, 20_000, 4096, "nvarchar(max)", 30);
         for (var i = 0; i < 20; i++) await w.ExecuteAsync(Ct);
-        var after = await conn.ScalarAsync<long>("SELECT COUNT_BIG(*) FROM dbo.Outbox", Ct);
-        Assert.Equal(20L * outboxRowsPerTx, after - before);
+        Assert.Equal(20L * outboxRowsPerTx, await ScalarAsync("SELECT COUNT_BIG(*) FROM dbo.Outbox") - before);
         if (outboxRowsPerTx > 0)
         {
-            Assert.Equal(4096L, await conn.ScalarAsync<long>("SELECT TOP 1 LEN(Payload) FROM dbo.Outbox ORDER BY OutboxId DESC", Ct));
-            // nvarchar: 2 bytes per character (decision D1).
-            Assert.Equal(8192L, await conn.ScalarAsync<long>("SELECT TOP 1 DATALENGTH(Payload) FROM dbo.Outbox ORDER BY OutboxId DESC", Ct));
+            Assert.Equal(4096L, await ScalarAsync("SELECT TOP 1 LEN(Payload) FROM dbo.Outbox ORDER BY OutboxId DESC"));
+            // nvarchar stores 2 bytes per character (decision D1).
+            Assert.Equal(8192L, await ScalarAsync("SELECT TOP 1 DATALENGTH(Payload) FROM dbo.Outbox ORDER BY OutboxId DESC"));
         }
-        Assert.True(await conn.ScalarAsync<int>("SELECT COUNT(*) FROM dbo.Task WHERE UpdatedAt > '2026-01-02'", Ct) > 0);
+        Assert.True(await ScalarAsync("SELECT COUNT_BIG(*) FROM dbo.Task WHERE UpdatedAt > '2026-01-02'") > 0);
     }
 
     [Fact]
     public async Task Open_loop_runner_drives_real_transactions()
     {
-        var w = new TaskWorkload(Connections.ConnectionString("cdcdb2", 20), Configuration.B, 20_000, 4096, "nvarchar(max)", 30);
+        var w = new TaskWorkload(fx.ConnectionString, Transaction.UpdateAndOutbox, 20_000, 4096, "nvarchar(max)", 30);
         var r = await new OpenLoopRunner(20, 1000).RunAsync(50, TimeSpan.FromSeconds(3), w.ExecuteAsync, Ct);
         Assert.Equal(0, r.Errors);
         Assert.Equal(150, r.Scheduled);
         Assert.True(r.Completed >= 140, $"completed {r.Completed}");
     }
 
+    /// <summary>OpenTelemetry.Instrumentation.SqlClient is not documented for SqlClient 7.x. This proves it emits spans.</summary>
     [Fact]
-    public async Task Cdc_enable_capture_cleanup_disable()
+    public async Task Sql_client_instrumentation_emits_spans_with_this_sqlclient_version()
     {
-        await using var conn = await Connections.OpenAsync("cdcdb1", Ct);
-        await conn.ExecAsync(SqlScripts.Block("cdc.sql", "enable"), Ct);
-        await conn.ExecAsync(SqlScripts.Block("cdc.sql", "enable"), Ct); // idempotent
-        Assert.True(await conn.ScalarAsync<bool>("SELECT is_tracked_by_cdc FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Outbox')", Ct));
-
-        var w = new TaskWorkload(Connections.ConnectionString("cdcdb1"), Configuration.C, 20_000, 4096, "nvarchar(max)", 30);
-        for (var i = 0; i < 50; i++) await w.ExecuteAsync(Ct);
-
-        // Capture runs asynchronously from the log. Force a scan rather than wait for the job.
-        long changeRows = 0;
-        for (var attempt = 0; attempt < 30 && changeRows < 50; attempt++)
+        var spans = new List<Activity>();
+        using (var tracer = Sdk.CreateTracerProviderBuilder().AddSqlClientInstrumentation().AddInMemoryExporter(spans).Build())
         {
-            try
-            {
-                await conn.ExecAsync("EXEC sys.sp_cdc_scan @maxtrans = 500, @maxscans = 10, @continuous = 0", Ct);
-            }
-            catch (SqlException)
-            {
-                // The capture job may already be running a scan.
-            }
-            changeRows = await conn.ScalarAsync<long>("SELECT COUNT_BIG(*) FROM cdc.dbo_Outbox_CT", Ct);
-            if (changeRows < 50) await Task.Delay(1000, Ct);
+            var w = new TaskWorkload(fx.ConnectionString, Transaction.UpdateOnly, 20_000, 4096, "nvarchar(max)", 30);
+            await w.ExecuteAsync(Ct);
+            tracer.ForceFlush();
         }
-        Assert.True(changeRows >= 50, $"change rows {changeRows}");
-
-        await conn.ExecAsync(SqlScripts.Block("cdc.sql", "cleanup"), Ct, 600);
-        var after = await conn.ScalarAsync<long>("SELECT COUNT_BIG(*) FROM cdc.dbo_Outbox_CT", Ct);
-        Assert.True(after < changeRows, $"cleanup left {after} of {changeRows}");
-
-        await conn.ExecAsync(SqlScripts.Block("cdc.sql", "disable"), Ct);
-        Assert.False(await conn.ScalarAsync<bool>("SELECT is_cdc_enabled FROM sys.databases WHERE database_id = DB_ID()", Ct));
-        await conn.ExecAsync("TRUNCATE TABLE dbo.Outbox", Ct);
-    }
-
-    /// <summary>
-    /// DMVs that exist on SQL Server as well as Azure SQL Database. The
-    /// Azure-only ones (resource stats, pool stats, governance, db wait stats)
-    /// can only be proven live.
-    /// </summary>
-    [Theory]
-    [InlineData("file_stats")]
-    [InlineData("log_space")]
-    [InlineData("table_sizes")]
-    [InlineData("perf_counters")]
-    [InlineData("cdc_scan_sessions")]
-    [InlineData("cdc_errors")]
-    public async Task Portable_collector_queries_run(string stream)
-    {
-        await using var conn = await Connections.OpenAsync("cdcdb1", Ct);
-        var rows = await conn.RowsAsync(DmvCollector.PerDatabase[stream], Ct);
-        if (stream is "file_stats" or "log_space" or "table_sizes") Assert.NotEmpty(rows);
+        Assert.Contains(spans, s => s.Kind == ActivityKind.Client);
     }
 
     [Fact]
-    public async Task Os_wait_stats_query_runs()
+    public async Task Cli_window_prints_warmup_and_measured_results()
     {
-        await using var conn = await Connections.OpenAsync("cdcdb1", Ct);
-        await conn.RowsAsync(DmvCollector.PoolLevel["os_wait_stats"], Ct);
+        var dll = Path.Combine(AppContext.BaseDirectory, "loadgen.dll");
+        var psi = new ProcessStartInfo("dotnet")
+        {
+            ArgumentList = { dll, "window", "--connection-string", fx.ConnectionString, "--database", "loadgendb", "--transaction", "update-outbox",
+                "--rate", "40", "--warmup", "1", "--measure", "2", "--max-task-id", "20000", "--telemetry", "off", "--label", "run_id=test" },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        using var p = Process.Start(psi)!;
+        var stdout = await p.StandardOutput.ReadToEndAsync(Ct);
+        var stderr = await p.StandardError.ReadToEndAsync(Ct);
+        await p.WaitForExitAsync(Ct);
+        Assert.True(p.ExitCode == 0, stderr);
+        using var doc = JsonDocument.Parse(stdout);
+        Assert.Equal(80, doc.RootElement.GetProperty("measured").GetProperty("scheduled").GetInt64());
+        Assert.Equal(0, doc.RootElement.GetProperty("measured").GetProperty("errors").GetInt64());
+        Assert.False(doc.RootElement.GetProperty("telemetry").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("warmup").GetProperty("scheduled").GetInt64() == 40);
     }
 
     [Fact]
-    public async Task Collector_writes_records_and_errors_for_azure_only_views()
+    public async Task Cli_rejects_bad_arguments_with_exit_code_2()
     {
-        var settings = fx.Settings with { RunId = "collector-test-" + Guid.NewGuid().ToString("N") };
-        await using var sink = new ResultSink(settings);
-        var ctx = new RunContext(settings.RunId, "test", "B", 100, 1);
-        await new DmvCollector(new SqlConnections(settings), sink, ["cdcdb1"], () => ctx, TimeSpan.FromSeconds(1)).PollOnceAsync(Ct);
-        await sink.DisposeAsync();
-        var dir = Path.Combine(settings.ResultsDirectory, settings.RunId);
-        Assert.True(File.Exists(Path.Combine(dir, "file_stats.jsonl")));
-        var line = (await File.ReadAllLinesAsync(Path.Combine(dir, "file_stats.jsonl"), Ct))[0];
-        Assert.Contains("\"run_id\":\"" + settings.RunId + "\"", line);
-        Assert.Contains("\"step_tps\":100", line);
-        // dm_db_resource_stats does not exist on SQL Server: recorded as an error, not a crash.
-        Assert.Contains("db_resource_stats", await File.ReadAllTextAsync(Path.Combine(dir, "collector_errors.jsonl"), Ct));
+        var dll = Path.Combine(AppContext.BaseDirectory, "loadgen.dll");
+        using var p = Process.Start(new ProcessStartInfo("dotnet") { ArgumentList = { dll, "window", "--rate", "0" }, RedirectStandardError = true })!;
+        await p.WaitForExitAsync(Ct);
+        Assert.Equal(2, p.ExitCode);
     }
 }
