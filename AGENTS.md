@@ -36,10 +36,12 @@ Last updated: 2026-11-22.
 
 - Build order step 1 done. Persistent layer applied (decisions 0006, 0011,
   0012), including Application Insights and diagnostic settings.
-- Step 2 (spike) in progress on branch `agent/rig-v2`: load generator (.NET),
-  orchestrator and collector (Python), Debezium image, ephemeral Terraform,
-  `run-test` and `sweep` workflows. Not merged, nothing dispatched.
-- No ephemeral resource exists. No measurement exists.
+- Step 2 (spike) in progress. Everything is merged through PR #7. First
+  spike run 45049809770 failed at apply (database zone redundancy, fixed in
+  PR #7). Its destroy and verify-clean passed. No spike item has passed yet.
+- The Container Apps environment is persistent (decision 0013); budget 100.
+  Remove it after the confirming run.
+- No measurement exists.
 - Detail and next steps: `docs/progress.md`.
 
 ## Autonomy model
@@ -161,7 +163,8 @@ existing run before dispatching.
 ## Bootstrap
 
 The persistent layer (resource group contents, state storage, results storage,
-Log Analytics workspace, managed identities, role assignments, budget alert) is
+Log Analytics workspace, Application Insights, container registry, Container
+Apps environment, managed identities, role assignments, budget alert) is
 created once.
 
 - It is the only Terraform an agent may apply from a local session.

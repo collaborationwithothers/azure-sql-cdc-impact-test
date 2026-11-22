@@ -18,7 +18,8 @@ All of it lives in one resource group, `rg-cdc-impact-test`, in Sweden Central.
 | Pipeline managed identity | GitHub Actions signs in as this identity through OpenID Connect federation. It is Contributor on this resource group only. |
 | Test-rig managed identity | The test-rig container runs as this identity. It becomes the Entra admin of each ephemeral SQL server. |
 | Role assignments | Every data-plane role either identity needs. The pipeline identity cannot create role assignments itself. |
-| Budget alert | Must exist before the first ephemeral apply. |
+| Container Apps environment | Hosts the per-run test-rig job. Dedicated D8 profile at zero nodes between runs; the plan management fee runs while it exists. Remove after the confirming run (decision 0013). |
+| Budget alert | 100 per month. Must exist before the first ephemeral apply. |
 
 OpenID Connect (OIDC) federation means GitHub issues a short-lived signed token
 to a workflow job, and Microsoft Entra ID exchanges it for an Azure token. No

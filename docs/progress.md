@@ -73,10 +73,19 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
       should match." The provider sends `zone_redundant = false` when the
       argument is unset (provider source, v5.14.0). Fix: set it to `true` on
       the databases. The rig never started, so no spike item was tested.
-- [ ] Spike re-run after the fix.
+- [x] Spike item 7 (environment creation time): 5m50s to create, 24m18s to
+      delete. Destroy and verify-clean of that run passed. Owner chose to make the
+      environment persistent with D8 at zero nodes, and to raise the budget
+      to 100 (decision 0013).
+- [ ] Persistent apply: environment, its diagnostic setting, budget 100.
+- [ ] Spike re-run after the fix. Record how long the first job start waits
+      for a D8 node from zero.
 - [ ] Record spike results per design section 12 items 1 to 8.
 
 ## Open questions carried forward
+
+- After the 6 vCore confirming run: remove the Container Apps environment from
+  the persistent layer (decision 0013), so the plan management fee stops.
 
 - Debezium to Event Hubs without a key: the Event Hubs sink accepts only a
   connection string (verified), which would be stop condition 2. Plan: Kafka

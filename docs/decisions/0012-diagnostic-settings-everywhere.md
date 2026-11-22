@@ -12,9 +12,9 @@ and enables all of them: the `allLogs` category group where offered, otherwise
 every log category, plus every metric category. Both layers use it.
 
 Covered: storage account and its blob service, Log Analytics workspace,
-container registry (persistent); SQL elastic pool, both databases, the
-`master` database, Event Hubs namespace, Container Apps environment
-(ephemeral).
+container registry, Container Apps environment (persistent; it moved there
+in decision 0013); SQL elastic pool, both databases, the `master` database,
+Event Hubs namespace (ephemeral).
 
 Not covered, and why:
 - Managed identities, role assignments, budgets, firewall rules: Azure offers

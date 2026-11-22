@@ -21,15 +21,16 @@ mask() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$1"; return 0; }
 # Finds persistent resources by their purpose tag and writes their names to
 # $GITHUB_ENV, masked, so no generated name is printed in a public log.
 discover() {
-  local sa acr law rig rig_client
+  local sa acr law rig rig_client appi cae
   sa=$(az resource list -g "$RG" --query "[?tags.purpose=='state-and-results'].name | [0]" -o tsv)
   acr=$(az resource list -g "$RG" --query "[?tags.purpose=='images'].name | [0]" -o tsv)
   law=$(az resource list -g "$RG" --query "[?tags.purpose=='diagnostics'].name | [0]" -o tsv)
   rig=$(az resource list -g "$RG" --query "[?tags.purpose=='rig-identity'].name | [0]" -o tsv)
   appi=$(az resource list -g "$RG" --query "[?tags.purpose=='telemetry'].name | [0]" -o tsv)
-  [ -n "$sa" ] && [ -n "$acr" ] && [ -n "$law" ] && [ -n "$rig" ] || { echo "Persistent layer not found"; exit 1; }
+  cae=$(az resource list -g "$RG" --query "[?tags.purpose=='rig-environment'].name | [0]" -o tsv)
+  [ -n "$sa" ] && [ -n "$acr" ] && [ -n "$law" ] && [ -n "$rig" ] && [ -n "$appi" ] && [ -n "$cae" ] || { echo "Persistent layer not found"; exit 1; }
   rig_client=$(az identity show -g "$RG" -n "$rig" --query clientId -o tsv)
-  for v in "$sa" "$acr" "$law" "$rig_client" "$appi"; do mask "$v"; done
+  for v in "$sa" "$acr" "$law" "$rig_client" "$appi" "$cae"; do mask "$v"; done
   {
     echo "STATE_ACCOUNT=$sa"
     echo "TF_VAR_storage_account_name=$sa"
@@ -37,6 +38,7 @@ discover() {
     echo "TF_VAR_log_analytics_workspace_name=$law"
     echo "TF_VAR_rig_identity_name=$rig"
     echo "TF_VAR_application_insights_name=$appi"
+    echo "TF_VAR_container_app_environment_name=$cae"
     echo "ACR_LOGIN_SERVER=$acr.azurecr.io"
     echo "RIG_CLIENT_ID=$rig_client"
   } >> "${GITHUB_ENV:-/dev/stdout}"
