@@ -104,6 +104,14 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [x] Report: storage and backup cost of CDC section; pairs with A use repeat 1 only (decision 0016, branch `agent/report-storage-cost`).
 - [ ] Smoke, then quick (4 vCores), then confirm (6 vCores); remove the persistent environment after.
 
+## Quick run 45062722769 (2026-11-22)
+
+- Mode quick, 4 vCore pool, loads 100, 200, 300, 400, 500 updates per second; B and C three rounds each, A once; 10 GB seed. Run, destroy and verify-clean succeeded.
+- Report: `results` branch, `results/45062722769-1/report/` (SUMMARY.md for readers without context, README.md technical appendix), sanitised raw files in `raw/`.
+- Main measured findings: CDC adds about 10 KB of log per update (+65%), shows at pool level as +15 points of pool log write rate at 400 updates per second and about 900 ms/s of POOL_LOG_RATE_GOVERNOR waits; database CPU, database log rate and p95 latency differences are within run-to-run variation. Both B and C failed 500 in two of three rounds (workers exhausted behind data IO near its cap).
+- Not verified: Event Hubs counts for this run (metrics window bug, fixed in PR #16 for later runs); Debezium telemetry in Application Insights; 6 vCore pool (not run); data storage price for a zone-redundant pool; timeout destroy proof (waived).
+- After the run the Container Apps environment was switched off (decision 0013 amendment).
+
 ## Open questions carried forward
 
 - After the 6 vCore confirming run: remove the Container Apps environment from

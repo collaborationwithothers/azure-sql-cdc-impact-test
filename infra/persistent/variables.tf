@@ -27,6 +27,12 @@ variable "monthly_budget" {
   default     = 100
 }
 
+variable "rig_environment_enabled" {
+  description = "Keep the persistent Container Apps environment that live runs need (decision 0013). Off between test campaigns: it bills a management fee while it exists."
+  type        = bool
+  default     = false
+}
+
 variable "workload_profile_type" {
   description = "Dedicated profile for the test rig. D8 is 8 vCPU and 32 GiB per node (observed 2026-11-22)."
   type        = string

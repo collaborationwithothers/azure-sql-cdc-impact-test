@@ -66,7 +66,7 @@ case "${1:-}" in
     terraform -chdir="$DIR" plan -input=false -out="$PLAN"
     echo
     echo "Resource addresses and resource groups in the plan:"
-    terraform -chdir="$DIR" show -json "$PLAN" | python3 "$(dirname "$0")/plan_check.py" "$RG" || { rm -f "$PLAN"; die "plan rejected"; }
+    terraform -chdir="$DIR" show -json "$PLAN" | python3 "$(dirname "$0")/plan_check.py" "$RG" ${ALLOW_DELETE:+--allow-delete} || { rm -f "$PLAN"; die "plan rejected"; }
     ;;
   apply)
     check_subscription
