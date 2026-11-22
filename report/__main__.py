@@ -1,4 +1,4 @@
-"""python -m report <results_dir> <run_id> [<run_id> ...] --out <dir> [--prices-file <file>]"""
+"""python -m report <results_dir> <run_id> [<run_id> ...] --out <dir> [--prices-file <file> | --no-prices] [--duty-hours H]"""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True, help="output directory for README.md and the charts")
     p.add_argument("--prices-file", help="saved Retail Prices API response; skips the network call")
     p.add_argument("--no-prices", action="store_true", help="give no prices (no network call)")
+    p.add_argument("--duty-hours", type=float, help="reader's assumption: hours per day the step load runs (0 to 24); "
+                   "adds a column to the storage and backup cost section")
     a = p.parse_args(argv)
+    if a.duty_hours is not None and not 0 < a.duty_hours <= 24:
+        p.error("--duty-hours must be above 0 and at most 24")
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -40,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         (out / "prices.json").write_text(json.dumps(price_data, indent=1) + "\n")
 
     made = charts.render(metrics, out) if metrics else []
-    text = render.Report(runs, metrics, steps, applied, price_data, price_error, made).build()
+    text = render.Report(runs, metrics, steps, applied, price_data, price_error, made, a.duty_hours).build()
     (out / "README.md").write_text(text)
     print(f"report: {len(runs)} runs, {len(metrics)} steps, {len(made)} charts -> {out / 'README.md'}")
     return 0

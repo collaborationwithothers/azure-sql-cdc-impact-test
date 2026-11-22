@@ -16,6 +16,8 @@ python3 -m venv .venv-report
 .venv-report/bin/python -m report results <run-id> --out out/report --prices-file prices.json
 # No prices at all:
 .venv-report/bin/python -m report results <run-id> --out out/report --no-prices
+# Add a reader-chosen duty cycle (hours a day at the step load) to the storage and backup cost section:
+.venv-report/bin/python -m report results <run-id> --out out/report --duty-hours 8
 ```
 
 `results` holds one directory per run ID, as the `run-test` export step

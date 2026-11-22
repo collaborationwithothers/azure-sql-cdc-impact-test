@@ -48,7 +48,38 @@ these rules carry the whole burden of not publishing noise as a result.
   recorded value because no document gives the limits for other caps. A load
   that was not carried with no limit reached gets no size.
 - **Prices.** Read at report time from the Azure Retail Prices API; monthly is
-  hourly x 730. Storage and backup are not priced.
+  hourly x 730. A second query reads the storage meters (below).
+- **Repeats with A (added 2026-11-22, decision 0018).** A pair uses only the
+  repeats both configurations ran. The quick run has A in repeat 1 only, so
+  B - A and C - A rest on repeat 1 (jitter: within-window spread) and the
+  table says so; C - B uses all three repeats (jitter: spread across repeats).
+- **Change-table storage (added 2026-11-22).** Bytes per change row is the
+  growth of `reserved_bytes` over the growth of `row_count` for
+  `cdc.dbo_Outbox_CT` between the polls that bracket each C window. A table
+  that shrank in the window gives no figure. Retained size = bytes per row x
+  step load x 4,320 minutes (the documented default retention), assuming one
+  change row per transaction. Derived; the harness lowers retention only in
+  its cleanup phase.
+- **Extra log (added 2026-11-22).** C - B log bytes per transaction from the
+  LOG file counter, over every shared repeat, with the uplift suppression
+  rule. A counter reset drops that repeat and the report names it. GB per day
+  = difference x step load x 86,400 s, GB = 10^9 bytes (decimal gives the
+  larger count, so the higher cost).
+- **Backup cost (added 2026-11-22).** EXTRAPOLATION. Log backup bytes are
+  taken to equal log written (inference: log backups of TDE databases are not
+  compressed). Each day's log is held 7 to 14 days (7-day PITR plus up to a
+  week for weekly purge sets). Priced with the `ZRS Data Stored` PITR meter as
+  an upper bound: every extra GB billed. The free allowance (backups up to the
+  pool's max data size) can make it 0, and no run measures the pool's total
+  backup size.
+- **Data storage (added 2026-11-22).** Not priced: which data storage meter a
+  zone-redundant General Purpose pool pays is not documented. The report says
+  "not priced: unverified". A billing rule that is not verified is never
+  priced (`report/storage.py`, `UNVERIFIED`).
+- **Monthly CDC difference (added 2026-11-22).** EXTRAPOLATION: compute C - B
+  from the sizing table plus the backup upper bound, load sustained 24 hours a
+  day. `--duty-hours H` adds a column for a reader-chosen duty cycle; it scales
+  log and change rows, not compute.
 
 ## Alternatives rejected
 
@@ -61,13 +92,24 @@ these rules carry the whole burden of not publishing noise as a result.
   governed log rate was 1.41 MiB/s). Governed percentages are what binds.
 - Scaling the per-database limits with a raised cap, using the single-database
   tables: not documented for pooled databases.
+- Pricing data storage with the base meter alone, or base plus zone
+  redundancy meter: either is a guess about an undocumented billing rule.
+- Netting the free backup allowance: needs the pool's total backup size,
+  which a run of hours cannot measure.
+- Pooling B's three repeats against A's one: mixes blocks (decision 0018
+  blocks by repeat).
 
 ## How it was verified
 
 - Unit tests in `tests/report/` on hand-written synthetic runs: window
   matching, carries, binding rule and confirmation, uplift suppression,
   sizing labels (measured, extrapolated, cap-bound, unexplained failure),
-  price parsing, catch-up check, end to end through the CLI.
+  price parsing, catch-up check, end to end through the CLI. Added 2026-11-22:
+  bytes per change row, retention arithmetic, C - B log over three repeats with
+  a counter reset, pairs with A on repeat 1 only, storage meter parsing, the
+  "not priced: unverified" path (44 tests).
+- Smoke run of the storage section against smoke run 45060216523-1 (C only),
+  output kept outside the repository.
 - Smoke run of the CLI against spike run 45054291170-1, output kept outside
   the repository.
 - Limits: `docs/verification/2026-11-22-report-limits.md`.
