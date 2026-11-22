@@ -4,6 +4,13 @@
 `README.md` plus PNG charts (design section 9). It reads only local files and,
 unless told otherwise, the public Azure Retail Prices API.
 
+It also writes `SUMMARY.md` (`report/summary.py`), the plain-language summary
+for a reader with no context; `README.md` links to it and is the technical
+appendix. `SUMMARY.md` reads the state `render.Report.build()` computed, so it
+is built second. It must not use the appendix's vocabulary ("database 1",
+"configuration B", "repeat", "uplift", "jitter", "governed"); the tests check
+this (decision 0016).
+
 ## Run it
 
 ```bash

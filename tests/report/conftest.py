@@ -67,6 +67,9 @@ def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * 
     w.rec("governance", T0, {"database": "db1", "rows": [governance_row("db2", pool_log=pool_log, pool_io=pool_io),
                                                          governance_row("db1", pool_log=pool_log, pool_io=pool_io)]},
           phase="setup")
+    w.rec("environment", T0, {"database": "db1", "rows": [{"database_name": "db1", "edition": "GeneralPurpose"}]},
+          phase="setup")
+    w.rec("seed", T0, {"database": "db1", "rows": 1000, "reserved_bytes": 10 * 2**30}, phase="seed")
     log_bytes_per_txn = log_bytes_per_txn or {"A": 500, "B": 9000, "C": 17000}
     t = T0 + timedelta(minutes=1)
     cum = {"log": 0.0, "rows_w": 0.0, "reads": 0.0, "writes": 0.0, "wait_log": 0.0, "wait_pool": 0.0, "sos": 0.0,

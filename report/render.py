@@ -43,6 +43,9 @@ class Report:
         self.duty_hours = duty_hours
         # {load: (C - B monthly compute difference, label)}, filled by sizing_section for storage_section.
         self.compute_diff: dict[int, tuple[float, str]] = {}
+        # {load: C - B monthly total (upper bound)}, filled by storage_section for the at-a-glance section.
+        self.monthly_total: dict[int, float] = {}
+        self.currency = ""
         self.runs = runs
         self.metrics = metrics
         self.steps = steps
@@ -96,6 +99,8 @@ class Report:
     def header(self) -> None:
         ids = ", ".join(r.run_id for r in self.runs)
         self.w("# CDC impact on an Azure SQL elastic pool: report", "",
+               "New to this? Read the plain-language summary first: [SUMMARY.md](SUMMARY.md). This file is the "
+               "technical appendix behind it.", "",
                f"Runs: {ids}. Generated from the raw result files of each run by `python -m report`.", "",
                "Figures are labelled **measured** (read from the run's raw files), **derived** (arithmetic on measured "
                "figures) or **EXTRAPOLATION** (a model beyond what was measured). Configurations: A no outbox, "
@@ -404,6 +409,7 @@ class Report:
             self.w("The monthly difference with and without CDC needs configurations B and C; these runs lack one.", "")
         if self.price_data:
             cur = next(iter(prices.values())).currency if prices else ""
+            self.currency = cur
             self.w(f"Prices: Azure Retail Prices API, queried {self.price_data.get('queried_at')}, region swedencentral, "
                    f"pay-as-you-go ('Consumption'), product '{P.PRODUCT}', meters 'vCore' plus 'Zone Redundancy vCore', "
                    f"currency {cur}. Monthly = hourly x {P.HOURS_PER_MONTH} hours (assumption). Compute and zone "
@@ -585,6 +591,7 @@ class Report:
             comp, label = self.compute_diff.get(t, (math.nan, "n/a"))
             bk = totals.get(t, {}).get("backup_hi", math.nan)
             total = comp + bk if not (math.isnan(comp) or math.isnan(bk)) else math.nan
+            self.monthly_total[t] = total
             row = [f"{t:,}", f(comp, 2) + (f" ({label})" if label != "n/a" else ""), "not priced", f(bk, 2), f(total, 2)]
             if self.duty_hours:
                 frac = self.duty_hours / 24

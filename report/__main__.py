@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import analysis, charts, prices, render, sizing, windows
+from . import analysis, charts, prices, render, sizing, summary, windows
 from .load import load_run
 
 
@@ -44,9 +44,10 @@ def main(argv: list[str] | None = None) -> int:
         (out / "prices.json").write_text(json.dumps(price_data, indent=1) + "\n")
 
     made = charts.render(metrics, out) if metrics else []
-    text = render.Report(runs, metrics, steps, applied, price_data, price_error, made, a.duty_hours).build()
-    (out / "README.md").write_text(text)
-    print(f"report: {len(runs)} runs, {len(metrics)} steps, {len(made)} charts -> {out / 'README.md'}")
+    report = render.Report(runs, metrics, steps, applied, price_data, price_error, made, a.duty_hours)
+    (out / "README.md").write_text(report.build())
+    (out / "SUMMARY.md").write_text(summary.build(report))  # reads figures the README build computed
+    print(f"report: {len(runs)} runs, {len(metrics)} steps, {len(made)} charts -> {out / 'README.md'}, {out / 'SUMMARY.md'}")
     return 0
 
 
