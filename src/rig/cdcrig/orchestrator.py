@@ -327,27 +327,44 @@ class Orchestrator:
             return None
 
     def wait_for_catchup(self, label: str) -> None:
-        """Waits until Debezium has seen every row in the change table."""
+        """Waits until CDC capture and then Debezium have processed every committed change.
+
+        The change table alone is not a target: capture copies commits into it
+        asynchronously, so it can lag the log (spike run 45054291170: 8,841 rows
+        against 9,000 commits). A marker row is written first. Capture reads the
+        log in order, so once the marker is in the change table every earlier
+        commit is too. Only then is Debezium compared with the change table.
+        """
         conn = self.connector.connect(self.s.database1)
         started = time.monotonic()
-        ct_rows, seen = 0, None
+        ct_rows, seen, captured, capture_seconds = 0, None, False, None
         try:
+            marker = db.scalar(conn, "INSERT dbo.Outbox (AggregateId, EventType, CreatedAt, Payload) "
+                                     "OUTPUT inserted.OutboxId VALUES (0, 'CatchUpMarker', SYSUTCDATETIME(), N'{}')")
             while time.monotonic() - started < self.s.catchUpTimeoutSeconds:
-                ct_rows = db.scalar(conn, "SELECT COUNT_BIG(*) FROM cdc.dbo_Outbox_CT")
-                try:
-                    seen = debezium.find(debezium.scrape(self.s.debeziumMetricsUrl), "streaming", "TotalNumberOfEventsSeen")
-                except OSError:
-                    seen = None
-                if seen is not None and ct_rows > 0 and seen >= ct_rows:
-                    break
-                time.sleep(5)
+                if not captured:
+                    captured = db.scalar(conn, "SELECT COUNT_BIG(*) FROM cdc.dbo_Outbox_CT WHERE OutboxId = ?", marker) > 0
+                    if captured:
+                        capture_seconds = time.monotonic() - started
+                if captured:
+                    ct_rows = db.scalar(conn, "SELECT COUNT_BIG(*) FROM cdc.dbo_Outbox_CT")
+                    try:
+                        seen = debezium.find(debezium.scrape(self.s.debeziumMetricsUrl), "streaming", "TotalNumberOfEventsSeen")
+                    except OSError:
+                        seen = None
+                    if seen is not None and seen >= ct_rows:
+                        break
+                time.sleep(2)
         finally:
             conn.close()
-        caught = seen is not None and seen >= ct_rows
+        caught = captured and seen is not None and seen >= ct_rows
         seconds = time.monotonic() - started
-        self.sink.write("catchup", self.ctx, {"label": label, "seconds": seconds, "change_table_rows": ct_rows,
-                                              "debezium_events_seen": seen, "caught_up": caught})
-        self.check(f"catchup_{label}_{self.ctx.configuration}_r{self.ctx.repeat}", caught, f"{seconds:.0f} s, events {seen}, change rows {ct_rows}")
+        self.sink.write("catchup", self.ctx, {"label": label, "seconds": seconds, "capture_seconds": capture_seconds,
+                                              "change_table_rows": ct_rows, "debezium_events_seen": seen,
+                                              "marker_captured": captured, "caught_up": caught})
+        self.check(f"catchup_{label}_{self.ctx.configuration}_r{self.ctx.repeat}", caught,
+                   f"{seconds:.0f} s (capture {capture_seconds if capture_seconds is None else round(capture_seconds)} s), "
+                   f"events {seen}, change rows {ct_rows}")
 
     @staticmethod
     def _file_bytes(conn, type_desc: str) -> int:

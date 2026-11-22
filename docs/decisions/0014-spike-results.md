@@ -26,7 +26,10 @@ None of its numbers is a result.
 Also shown: `sp_cdc_change_job` works on Azure SQL Database
 (`cdc_change_job_retention`), on-demand CDC cleanup removes change rows
 (`cdc_cleanup_on_demand`), and Debezium caught up after the ladder, top-up and
-purge phases (`catchup_*`). The step itself: 6000 of 6000 transactions, 0
+purge phases (`catchup_*`). Correction: those checks compared Debezium with
+the change table before CDC capture had finished (8,841 change rows against
+9,000 commits), so the spike catch-up times are not valid. Fixed with a
+marker row in `wait_for_catchup`. The step itself: 6000 of 6000 transactions, 0
 errors, 0 shed.
 
 ## Open from the spike
