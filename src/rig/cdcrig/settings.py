@@ -10,10 +10,10 @@ PRESETS: dict[str, dict] = {
     "spike": {"configurations": ["C"], "steps": [100], "warmupSeconds": 30, "measureSeconds": 60, "seedGb": 0.25, "purgeMinRows": 20000},
     # Smoke: one configuration, two steps, about 10 minutes.
     "smoke": {"configurations": ["C"], "steps": [100, 200], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 0.5, "purgeMinRows": 50000},
-    # Quick run: the default grid.
-    "quick": {"configurations": ["A", "B", "C"], "steps": [100, 200, 400, 800, 1200, 1600], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
-    # Confirming run: configuration C; steps chosen from the quick run.
-    "confirm": {"configurations": ["C"], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
+    # Quick run: 100 to 500 tps, the owner's realistic range (decision 0017).
+    "quick": {"configurations": ["A", "B", "C"], "steps": [100, 200, 300, 400, 500], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
+    # Confirming run: configuration C at the same steps (decision 0017).
+    "confirm": {"configurations": ["C"], "steps": [100, 200, 300, 400, 500], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
     "targeted": {},
 }
 
