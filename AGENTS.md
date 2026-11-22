@@ -36,9 +36,9 @@ Last updated: 2026-11-22.
 
 - Build order step 1 done. Persistent layer applied (decisions 0006, 0011,
   0012), including Application Insights and diagnostic settings.
-- Step 2 (spike) in progress. Everything is merged through PR #7. First
-  spike run 45049809770 failed at apply (database zone redundancy, fixed in
-  PR #7). Its destroy and verify-clean passed. No spike item has passed yet.
+- Step 2 (spike): items 1 to 8 passed in run 45054291170 (decision 0014).
+  Open: Debezium telemetry to Application Insights; export re-proof; destroy
+  on failure and on timeout.
 - The Container Apps environment is persistent (decision 0013); budget 100.
   Remove it after the confirming run.
 - No measurement exists.

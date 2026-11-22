@@ -157,22 +157,32 @@ jobs:
           exec_name=$(az containerapp job start -n "$JOB_NAME" -g "$RG" --query name -o tsv)
           echo "EXECUTION=$exec_name" >> "$GITHUB_ENV"
           echo "execution started"
+          started=$(date +%s); last_login=$started; unknown=0
           while true; do
+            # Sign in again every four minutes: the OIDC token lasts five.
+            if [ $(( $(date +%s) - last_login )) -ge 240 ]; then
+              scripts/ephemeral.sh relogin; last_login=$(date +%s)
+            fi
             status=$(az containerapp job execution show -n "$JOB_NAME" -g "$RG" --job-execution-name "$exec_name" --query properties.status -o tsv 2>/dev/null || echo Unknown)
             case "$status" in
-              Succeeded) echo "job succeeded"; break ;;
+              Succeeded) echo "job succeeded after $(( $(date +%s) - started )) s"; break ;;
               Failed|Stopped|Degraded) echo "job ended: $status"; echo "JOB_FAILED=1" >> "$GITHUB_ENV"; break ;;
+              Unknown) unknown=$((unknown + 1)) ;;
+              *) unknown=0 ;;
             esac
+            # Ten minutes without a readable status is a pipeline fault, not a slow job.
+            if [ "$unknown" -ge 20 ]; then echo "job status unreadable for 10 minutes"; echo "JOB_FAILED=1" >> "$GITHUB_ENV"; break; fi
             sleep 30
           done
       - name: Export results
         if: always() && env.JOB_NAME != ''
         run: |
           set -euo pipefail
+          scripts/ephemeral.sh relogin
           mkdir -p results
           az storage blob download-batch --auth-mode login --account-name "$STATE_ACCOUNT" -s results -d results --pattern "$RUN_ID/*" -o none || true
-          server=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_mssql_server.this 2>/dev/null | awk -F'"' '/^ *name *=/ {print $2; exit}')
-          namespace=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_eventhub_namespace.this 2>/dev/null | awk -F'"' '/^ *name *=/ {print $2; exit}')
+          server=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_mssql_server.this 2>/dev/null | awk -F'"' '!found && /^ *name *=/ {print $2; found=1}')
+          namespace=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_eventhub_namespace.this 2>/dev/null | awk -F'"' '!found && /^ *name *=/ {print $2; found=1}')
           SANITIZE_VALUES="$server $namespace $STATE_ACCOUNT $TF_VAR_acr_name $TF_VAR_log_analytics_workspace_name $TF_VAR_application_insights_name $RIG_CLIENT_ID $ARM_TENANT_ID $ARM_SUBSCRIPTION_ID" \
             python3 scripts/sanitize.py results
           echo "apply_seconds=${APPLY_SECONDS:-}" > "results/$RUN_ID/pipeline.txt" 2>/dev/null || true

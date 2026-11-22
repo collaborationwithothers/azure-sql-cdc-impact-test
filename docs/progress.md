@@ -77,10 +77,14 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
       delete. Destroy and verify-clean of that run passed. Owner chose to make the
       environment persistent with D8 at zero nodes, and to raise the budget
       to 100 (decision 0013).
-- [ ] Persistent apply: environment, its diagnostic setting, budget 100.
-- [ ] Spike re-run after the fix. Record how long the first job start waits
-      for a D8 node from zero.
-- [ ] Record spike results per design section 12 items 1 to 8.
+- [x] Persistent apply (PR #8): environment 4m58s, diagnostic setting,
+      budget 100. `minimum_count = 0` accepted for D8.
+- [x] Spike run 45054291170: rig succeeded, all checks passed. Items 1 to 8
+      recorded in decision 0014. Export failed on an expired OIDC token
+      (fixed: `ephemeral.sh relogin`). Destroy 2m52s, verify-clean passed.
+- [ ] Spike re-run to prove the export fix and check Event Hubs metrics.
+- [ ] Debezium telemetry missing from Application Insights (decision 0014).
+- [ ] Destroy on failure (inject=fail) and on timeout (inject=timeout).
 
 ## Open questions carried forward
 
