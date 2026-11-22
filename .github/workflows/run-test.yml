@@ -186,10 +186,12 @@ jobs:
           namespace=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_eventhub_namespace.this 2>/dev/null | awk -F'"' '!found && /^ *name *=/ {print $2; found=1}')
           # Event Hubs delivery, read from Azure Monitor before destroy. The
           # diagnostic-setting export carried no message counts (decision 0014).
+          # Both ends are given: with a start time only, az returns one hour
+          # from the start, which missed smoke run 45060216523 entirely.
           if [ -n "$namespace" ] && [ -d "results/$RUN_ID" ]; then
             ns_id=$(az eventhubs namespace show -g "$RG" -n "$namespace" --query id -o tsv)
             az monitor metrics list --resource "$ns_id" --interval PT1M --aggregation Total \
-              --start-time "$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)" \
+              --start-time "$(date -u -d '-5 hours' +%Y-%m-%dT%H:%M:%SZ)" --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               --metrics IncomingMessages IncomingBytes IncomingRequests ThrottledRequests UserErrors ServerErrors \
               -o json > "results/$RUN_ID/eventhubs_metrics.json" || echo "Event Hubs metrics not read"
             python3 -c "import json,sys; d=json.load(open(sys.argv[1])); [print('eventhubs', m['name']['value'], int(sum(p.get('total') or 0 for t in m['timeseries'] for p in t['data']))) for m in d['value']]" \
