@@ -102,3 +102,85 @@ per hour, in USD, for 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 32, 40 and
 The API returns exact duplicate items; the report keeps the newest effective
 price and fails on conflicting duplicates. Each report states its own query
 time. Monthly price is hourly x 730, an assumption stated in the report.
+
+## Storage and backup cost of CDC (used by `report/storage.py`)
+
+Checked 2026-11-22 against Microsoft Learn.
+
+Sources:
+- CDCA: https://learn.microsoft.com/azure/azure-sql/database/change-data-capture-overview?view=azuresql
+- ADDJOB: https://learn.microsoft.com/sql/relational-databases/system-stored-procedures/sys-sp-cdc-add-job-transact-sql
+- CDCV: https://learn.microsoft.com/sql/relational-databases/track-changes/about-change-data-capture-sql-server#validity-interval
+- AB: https://learn.microsoft.com/azure/azure-sql/database/automated-backups-overview?view=azuresql
+- VC: https://learn.microsoft.com/azure/azure-sql/database/service-tiers-sql-database-vcore?view=azuresql#data-and-log-storage
+- EPS: https://learn.microsoft.com/azure/azure-sql/database/elastic-pool-scale?view=azuresql#change-elastic-pool-storage-size
+- SDS: https://learn.microsoft.com/azure/azure-sql/database/single-database-scale?view=azuresql#change-storage-size
+- BK: https://learn.microsoft.com/sql/t-sql/statements/backup-transact-sql
+- TDE: https://learn.microsoft.com/azure/azure-sql/database/transparent-data-encryption-tde-overview?view=azuresql
+- REL: https://learn.microsoft.com/azure/reliability/reliability-sql-database
+
+CDC retention:
+- VERIFIED (CDCA): in Azure SQL Database a scheduler runs capture every 20
+  seconds and cleanup every hour; the page recommends "changing the CDC
+  retention period to a smaller number than the default of three days".
+- VERIFIED (ADDJOB): `@retention` is in minutes, "default of 4320 (72
+  hours)". VERIFIED (CDCV): "By default, three days of data are retained."
+  The report uses 4,320 minutes.
+- Context: the harness runs `sp_cdc_change_job @job_type = N'cleanup',
+  @retention = 1` in its cleanup phase only, and records whether it worked
+  (check `cdc_change_job_retention`). Smoke run 45060216523-1 recorded it as
+  ok.
+
+Point-in-time restore (PITR) backups:
+- VERIFIED (AB): PITR retention is 7 days by default, configurable 1 to 35.
+- VERIFIED (AB): transaction log backups are taken "approximately every 10
+  minutes"; full backups weekly; differentials every 12 or 24 hours.
+- VERIFIED (AB): "Azure must store additional full, differential, and
+  transaction log backups for up to a week longer than the configured
+  retention period", and purges the three types "together in weekly sets".
+  The report holds each day's log for 7 to 14 days.
+- VERIFIED (AB): full and differential backups are compressed; "For
+  TDE-encrypted databases, Azure doesn't compress log backup files". VERIFIED
+  (TDE): TDE "is enabled for all newly deployed databases in Azure SQL
+  Database". VERIFIED (BK): each log backup "includes all log records not
+  backed up in a previous log backup".
+- INFERENCE (not a Microsoft Learn claim): log backup bytes equal log bytes
+  written to the log file. The report labels it as an inference.
+
+Backup billing (vCore, elastic pool):
+- VERIFIED (AB): "For elastic pools, you get a backup storage amount equal to
+  the maximum data storage for the pool storage size at no extra charge."
+  Billable = total of all full, differential and log backups of the pooled
+  databases minus the maximum pool data storage, aggregated at pool level,
+  paid "in gigabytes per month according to the backup storage redundancy".
+- VERIFIED (AB): an amount held constant all month bills as that many
+  GB-months (the 744 GB example).
+- VERIFIED (AB): the cost-analysis meter subcategory for PITR backups is
+  "single/elastic pool pitr backup storage". The Retail Prices API on
+  2026-11-22 returned, for swedencentral, product `SQL Database Single/Elastic
+  Pool PITR Backup Storage`, meter `ZRS Data Stored`, SKU `Backup ZRS`, unit
+  `1 GB/Month`, 0.119 USD, effective 2024-11-01. Also listed: `LRS Data
+  Stored`, `RA-GRS Data Stored`, `RA-GZRS Data Stored`, and `Data Stored -
+  Free` at 0. The ephemeral databases set `storage_account_type = "Zone"`,
+  so the report uses `ZRS Data Stored`.
+- Consequence: whether CDC's extra log backups cost anything depends on the
+  pool's total backup size against its max data size, which no run measures.
+  The report gives an upper bound (every extra GB billed) and says the lower
+  bound is 0.
+
+Data storage billing:
+- VERIFIED (VC): "In the General Purpose and Business Critical tiers, you're
+  charged for the maximum storage size configured for a database or elastic
+  pool." The change table costs money only if the max size must grow.
+- PARTIAL (EPS versus SDS): EPS says the price of storage for an elastic pool
+  is "the max data size specified, multiplied by the storage unit price"; SDS
+  says, for "a single database or an elastic pool", the price is data plus
+  30% transaction log storage. The pages disagree for pools.
+- UNVERIFIABLE: which meter a zone-redundant General Purpose pool pays for
+  data storage. The API lists `General Purpose Data Stored` (0.13685 USD per
+  GB-month, effective 2021-06-08) and `General Purpose Zone Redundancy Data
+  Stored` (0.274, effective 2024-08-01) under product `SQL Database
+  Single/Elastic Pool General Purpose - Storage`. REL says only that General
+  Purpose zone redundancy has "an extra charge". No page says whether the zone
+  redundancy meter replaces or adds to the base meter. The report therefore
+  prints "not priced: unverified" for change-table data storage.

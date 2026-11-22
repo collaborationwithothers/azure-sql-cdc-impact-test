@@ -13,6 +13,7 @@ from . import analysis as A
 from . import limits as L
 from . import prices as P
 from . import sizing as S
+from . import storage as ST
 from .load import Run, num
 from .windows import Step
 
@@ -37,7 +38,11 @@ def table(header: list[str], rows: list[list]) -> list[str]:
 
 class Report:
     def __init__(self, runs: list[Run], metrics: list[A.StepMetrics], steps: dict[str, list[Step]],
-                 applied: dict[str, S.Applied], price_data: dict | None, price_error: str | None, charts: list[tuple[str, str]]):
+                 applied: dict[str, S.Applied], price_data: dict | None, price_error: str | None, charts: list[tuple[str, str]],
+                 duty_hours: float | None = None):
+        self.duty_hours = duty_hours
+        # {load: (C - B monthly compute difference, label)}, filled by sizing_section for storage_section.
+        self.compute_diff: dict[int, tuple[float, str]] = {}
         self.runs = runs
         self.metrics = metrics
         self.steps = steps
@@ -225,16 +230,21 @@ class Report:
             out = []
             for r in rows:
                 if r["metric"] is None:
-                    out.append([r["pair"], f"{r['step']:,}", "-", "-", "-", "-", "-", "-", r["note"]])
+                    out.append([r["pair"], f"{r['step']:,}", "-", "-", "-", "-", "-", "-", r["repeats"],
+                                "; ".join(x for x in (r["note"], r["scope"]) if x)])
                     continue
                 u: A.Uplift = r["uplift"]
                 d = 0 if "bytes" in r["unit"] and "%" not in r["unit"] else 2
                 show = u.suppressed is None
                 out.append([r["pair"], f"{r['step']:,}", f"{r['metric']} ({r['unit']})", f(r["x"].value, d), f(r["y"].value, d),
                             f(u.absolute, d) if show else "-", f(u.percent) + " %" if show else "-", f(u.jitter, d),
-                            u.suppressed or ""])
+                            r["repeats"], "; ".join(x for x in (u.suppressed or "", r["scope"]) if x)])
             self.w(f"Run {run.run_id}:", "")
-            self.w(*table(["Pair", "Step (tps)", "Metric", "First", "Second", "Difference", "Difference %", "Jitter", "Note"], out))
+            if any(r["scope"] for r in rows):
+                self.w("Pairs with A use only the repeats in which A ran (the quick run runs A in repeat 1 only, decision "
+                       "0018), so their jitter is the within-window spread of one repeat. C - B uses every repeat.", "")
+            self.w(*table(["Pair", "Step (tps)", "Metric", "First", "Second", "Difference", "Difference %", "Jitter",
+                           "Repeats used", "Note"], out))
 
     def neighbour_section(self) -> None:
         self.w("## Neighbour impact: database 2 (measured)", "",
@@ -380,6 +390,7 @@ class Report:
                 diff = prices[cells["C"].vcores].monthly - prices[cells["B"].vcores].monthly
                 extra = not (cells["B"].measured and cells["C"].measured)
                 row.append(f(diff, 2) + (" (EXTRAPOLATION)" if extra else " (measured sizes)"))
+                self.compute_diff[load] = (diff, "EXTRAPOLATION" if extra else "measured sizes")
             elif "B" in configs and "C" in configs:
                 row.append("n/a")
             rows.append(row)
@@ -396,7 +407,8 @@ class Report:
             self.w(f"Prices: Azure Retail Prices API, queried {self.price_data.get('queried_at')}, region swedencentral, "
                    f"pay-as-you-go ('Consumption'), product '{P.PRODUCT}', meters 'vCore' plus 'Zone Redundancy vCore', "
                    f"currency {cur}. Monthly = hourly x {P.HOURS_PER_MONTH} hours (assumption). Compute and zone "
-                   "redundancy only: storage, backup storage and licence discounts are excluded. Query: "
+                   "redundancy only: licence discounts are excluded, and storage and backup storage are in the next "
+                   "section. Query: "
                    f"`{self.price_data.get('query')}`.", "")
             rows = [[p.vcores, f(p.compute_hourly, 4), f(p.zone_redundancy_hourly, 4), f(p.hourly, 4), f(p.monthly, 2)]
                     for p in sorted(prices.values(), key=lambda p: p.vcores)]
@@ -406,6 +418,196 @@ class Report:
             self.w("")
         else:
             self.w(f"Prices were not read: {self.price_error or 'no price source'}. No price is given.", "")
+
+    def storage_section(self) -> None:
+        R = ST
+        self.w("## Storage and backup cost of CDC", "",
+               "CDC costs storage in two ways. Each captured outbox insert becomes a row in the change table "
+               f"`{R.CT_SCHEMA}.{R.CT_TABLE}`, kept until the CDC cleanup job's retention expires. And configuration C "
+               "writes more transaction log per transaction than B; log backups carry that log, and point-in-time "
+               "restore (PITR) keeps them. Figures below are **derived** (arithmetic on measured counters) unless "
+               "labelled **EXTRAPOLATION** (sustained load beyond the measured windows). Microsoft Learn facts were "
+               "checked on 2026-11-22 (`docs/verification/2026-11-22-report-limits.md`).", "")
+        sp = P.parse_storage(self.price_data) if self.price_data else None
+        backup_price, backup_note = R.price("backup", sp.backup_zrs if sp else None)
+        data_price, data_note = R.price("data storage", sp.data_zone_redundancy if sp else None)
+        if not self.price_data:
+            backup_note = data_note = f"not priced: prices were not read ({self.price_error or 'no price source'})"
+        retention_s = R.CDC_RETENTION_MINUTES * 60
+        days_lo, days_hi = R.PITR_RETENTION_DAYS, R.PITR_RETENTION_DAYS + R.PITR_EXTRA_DAYS
+        totals: dict[int, dict] = {}
+
+        self.w("### Change-table storage (derived)", "",
+               f"Bytes per change row: growth of `reserved_bytes` divided by growth of `row_count` for "
+               f"`{R.CT_SCHEMA}.{R.CT_TABLE}` across each configuration C step window (`table_sizes.jsonl`, the polls that "
+               "bracket the window). Capture lag does not bias the ratio: both counts cover the rows capture wrote in the "
+               "window. Retained size = bytes per row x step load x retention, assuming one change row per transaction "
+               "(one outbox insert; `supports_net_changes = 0`). The table compares change rows written per second with "
+               f"achieved tps as a check. Retention: the cleanup job's default, {R.CDC_RETENTION_MINUTES:,} minutes "
+               "(three days; Microsoft Learn). The harness lowers retention to 1 minute in its cleanup phase, after the "
+               "load steps (check `cdc_change_job_retention` records whether that worked); production keeps the default "
+               "unless someone changes it. `cdc.lsn_time_mapping` also grows and is not counted.", "")
+        for run in self.runs:
+            items = R.change_rows(run, self.steps.get(run.run_id, []))
+            if not items:
+                self.w(f"Run {run.run_id}: no configuration C step; no change-table figure.", "")
+                continue
+            per_step = R.bytes_per_row(items)
+            rows = []
+            for t, rng in per_step.items():
+                its = [c for c in items if c.step.step_tps == t]
+                rps = R.Range.of([c.rows_per_s for c in its])
+                ach = R.Range.of([c.step.achieved for c in its])
+                ret = R.retained_bytes(rng.mean, t, retention_s) / R.GB
+                ret_lo = R.retained_bytes(rng.low, t, retention_s) / R.GB
+                ret_hi = R.retained_bytes(rng.high, t, retention_s) / R.GB
+                row = [f"{t:,}", rng.n, f(rng.mean, 0), f"{f(rng.low, 0)} to {f(rng.high, 0)}", f(rps.mean, 1), f(ach.mean, 1),
+                       f(ret, 2), f"{f(ret_lo, 2)} to {f(ret_hi, 2)}"]
+                if self.duty_hours:
+                    row.append(f(ret * self.duty_hours / 24, 2))
+                rows.append(row)
+                totals.setdefault(t, {})["ct_gb"] = ret
+            header = ["Step (tps)", "Repeats", "Bytes per change row (mean)", "Range across repeats",
+                      "Change rows written per s (mean)", "Achieved tps (mean)",
+                      f"Retained at {R.CDC_RETENTION_MINUTES:,} min (GB, mean)", "Retained range (GB)"]
+            if self.duty_hours:
+                header.append(f"Retained at {f(self.duty_hours, 1)} h/day of this load (GB, assumption)")
+            self.w(f"Run {run.run_id}:", "")
+            self.w(*table(header, rows))
+        self.w(f"Data storage cost of the change table: {data_note}. Separately, General Purpose pool data storage is "
+               "billed on the pool's configured max data size, not on space used (Microsoft Learn): the change table costs "
+               "money only when the max data size must be raised to hold it.", "")
+
+        self.w("### Extra transaction log (derived)", "",
+               f"Log bytes per transaction: database 1's LOG file `num_of_bytes_written` delta over the polls that bracket "
+               "each measured window, divided by achieved tps (as in the per-step table). A counter that goes down inside "
+               "a window (failover or restart) gives no value for that repeat. C - B is the mean over every repeat in which "
+               "both ran, with the uplift rule: no figure when the difference is not larger than the spread across "
+               "repeats (the jitter). The paired column is C - B within each repeat. GB per day = C - B bytes per "
+               "transaction x step load x 86,400 s, with GB = 10^9 bytes.", "")
+        any_pair = False
+        for run in self.runs:
+            diffs = R.log_diffs(self.run_metrics(run.run_id))
+            if not diffs:
+                self.w(f"Run {run.run_id}: needs configurations B and C at the same step; this run lacks one. No extra-log "
+                       "figure.", "")
+                continue
+            any_pair = True
+            rows = []
+            for d in diffs:
+                u = d.uplift
+                pr = d.paired_range
+                show = u.suppressed is None
+                gbd = R.log_gb_per_day(u.absolute, d.step_tps) if show else math.nan
+                row = [f"{d.step_tps:,}", ", ".join(map(str, d.repeats)) or "-", f(d.b.value, 0), f(d.c.value, 0),
+                       f(u.absolute, 0) if show else "-", f(u.jitter, 0),
+                       f"{f(pr.low, 0)} to {f(pr.high, 0)}" if pr.n else "-", f(gbd, 2) if show else "-",
+                       f(gbd * R.DAYS_PER_MONTH, 1) if show else "-"]
+                if self.duty_hours:
+                    row.append(f(R.log_gb_per_day(u.absolute, d.step_tps, self.duty_hours), 2) if show else "-")
+                note = "; ".join(x for x in (d.note, u.suppressed or "") if x)
+                if len(d.repeats) == 1 and show:
+                    note = "; ".join(x for x in (note, "one repeat: noise cannot be told from effect") if x)
+                rows.append(row + [note])
+                if show and "log_gb_day" not in totals.get(d.step_tps, {}):  # the first run listed wins
+                    totals.setdefault(d.step_tps, {})["log_gb_day"] = gbd
+                    totals[d.step_tps]["log_run"] = run.run_id
+            header = ["Step (tps)", "Repeats used", "B log bytes per txn", "C log bytes per txn", "C - B", "Jitter",
+                      "Paired C - B per repeat (min to max)", "Extra log at step load (GB/day)",
+                      f"Extra log ({R.DAYS_PER_MONTH}-day month, GB)"]
+            if self.duty_hours:
+                header.append(f"Extra log at {f(self.duty_hours, 1)} h/day (GB/day, assumption)")
+            self.w(f"Run {run.run_id}:", "")
+            self.w(*table(header + ["Note"], rows))
+
+        self.w("### Backup storage (EXTRAPOLATION)", "",
+               "Billing rules (Microsoft Learn, verified 2026-11-22):", "",
+               f"- PITR keeps {R.PITR_RETENTION_DAYS} days by default. Azure keeps full, differential and log backups for up "
+               f"to a week longer, because it purges them in weekly sets. So each day's log backups are held between "
+               f"{days_lo} and {days_hi} days.",
+               "- Log backups are taken about every 10 minutes. Each log backup holds all log records not in a previous log "
+               "backup. Log backups of TDE-encrypted databases are not compressed; TDE is on by default for new databases. "
+               "So log backup bytes are taken to equal log bytes written (inference from those facts; the log file counter "
+               "may include some log the backup does not).",
+               "- For an elastic pool, backup storage up to the pool's max data storage is free. Billable backup storage is "
+               "the total of all full, differential and log backups of the pooled databases minus the pool's max data "
+               "storage, charged per GB-month at the backup storage redundancy's rate. A steady amount stored all month "
+               "bills as that many GB-months.",
+               "- The databases use zone-redundant backup storage (`storage_account_type = \"Zone\"`), so the rate is the "
+               f"API's '{P.BACKUP_METER}' meter, product '{P.BACKUP_PRODUCT}'.", "",
+               "The pool's total backup size is not measured, so whether the extra log falls inside the free allowance is "
+               "unknown. The cost below is the upper bound: every extra GB billed. If the pool's backups stay under the "
+               "allowance, CDC's extra log backups cost 0. CDC also enlarges full and differential backups by the change "
+               "table (compressed); that is not modelled.", "")
+        if backup_price is None:
+            self.w(f"Backup storage: {backup_note}.", "")
+        rows = []
+        for t in sorted(totals):
+            g = totals[t].get("log_gb_day")
+            if g is None:
+                continue
+            lo, hi = R.backup_gb(g, days_lo), R.backup_gb(g, days_hi)
+            cost_lo = lo * backup_price if backup_price is not None else math.nan
+            cost_hi = hi * backup_price if backup_price is not None else math.nan
+            totals[t]["backup_hi"] = cost_hi
+            rows.append([f"{t:,}", totals[t]["log_run"], f(g, 2), f"{f(lo, 1)} to {f(hi, 1)}",
+                         f"{f(cost_lo, 2)} to {f(cost_hi, 2)}" if backup_price is not None else backup_note])
+        if rows:
+            cur = sp.backup_zrs.currency if sp and sp.backup_zrs else ""
+            self.w(*table(["Load (tps)", "Run", "Extra log (GB/day)", f"Extra log backups held, {days_lo} to {days_hi} days (GB)",
+                           f"Monthly cost if above the free allowance ({cur})"], rows))
+            if backup_price is not None:
+                self.w(f"Rate: {f(backup_price, 4)} {cur} per GB-month, meter '{P.BACKUP_METER}', SKU '{sp.backup_zrs.sku}', "
+                       f"effective {sp.backup_zrs.effective}, queried {self.price_data.get('queried_at')}.", "")
+        elif not any_pair:
+            self.w("No extra-log figure, so no backup figure.", "")
+        else:
+            self.w("No step has an extra-log figure larger than its jitter, so no backup figure.", "")
+
+        self.w("### Monthly cost difference with CDC, C - B (EXTRAPOLATION)", "",
+               "Compute difference from the sizing table, plus change-table data storage, plus the backup upper bound. "
+               "Assumptions:", "",
+               "- The step load runs 24 hours a day, every day (an upper bound for a workload that is busy only part of "
+               "the day).",
+               f"- {P.HOURS_PER_MONTH} hours per month for compute; {R.DAYS_PER_MONTH}-day month where log is summed per month; "
+               "backup storage held steadily, so GB held equals GB-months billed.",
+               f"- CDC retention {R.CDC_RETENTION_MINUTES:,} minutes; PITR retention {R.PITR_RETENTION_DAYS} days, each day's "
+               f"log held up to {days_hi} days (upper bound).",
+               "- Backup: every extra GB billed (upper bound; 0 inside the free allowance).",
+               f"- Change-table data storage: {data_note}. The total excludes it.",
+               "- Pay-as-you-go retail prices, no reservations or licence discounts.")
+        if self.duty_hours:
+            self.w(f"- Reader's assumption, change it with `--duty-hours`: the step load runs {f(self.duty_hours, 1)} hours a "
+                   "day. That scales log and change rows only; compute is provisioned all day.")
+        self.w("")
+        rows = []
+        for t in sorted(set(totals) | set(self.compute_diff)):
+            comp, label = self.compute_diff.get(t, (math.nan, "n/a"))
+            bk = totals.get(t, {}).get("backup_hi", math.nan)
+            total = comp + bk if not (math.isnan(comp) or math.isnan(bk)) else math.nan
+            row = [f"{t:,}", f(comp, 2) + (f" ({label})" if label != "n/a" else ""), "not priced", f(bk, 2), f(total, 2)]
+            if self.duty_hours:
+                frac = self.duty_hours / 24
+                row.append(f(comp + bk * frac, 2) if not math.isnan(total) else "n/a")
+            rows.append(row)
+        if rows:
+            header = ["Load (tps)", "Compute C - B per month", "Change-table storage", "Backup per month (upper bound)",
+                      "Total per month (upper bound)"]
+            if self.duty_hours:
+                header.append(f"Total at {f(self.duty_hours, 1)} h/day (assumption)")
+            self.w(f"Runs: {', '.join(r.run_id for r in self.runs)}.", "")
+            self.w(*table(header, rows))
+            self.w("n/a: a part is missing (no B and C sizes with prices, or no extra-log figure larger than its jitter). "
+                   "A total is given only when both compute and backup are.", "")
+        else:
+            self.w("No load has both a compute difference and a backup figure; no monthly total.", "")
+        if sp:
+            ref = [[m.product, m.meter, m.sku, f(m.per_gb_month, 4), m.currency, m.effective]
+                   for m in (sp.backup_zrs, sp.data, sp.data_zone_redundancy) if m]
+            if ref:
+                self.w("Storage meters read (Azure Retail Prices API, region swedencentral, 'Consumption'; only the backup "
+                       f"meter is used). Query: `{self.price_data.get('storage_query')}`.", "")
+                self.w(*table(["Product", "Meter", "SKU", "Per GB-month", "Currency", "Effective"], ref))
 
     def checks_section(self) -> None:
         self.w("## Data checks", "")
@@ -456,15 +658,19 @@ class Report:
         self.w(*[f"- {n}" for n in notes], "")
 
     def limitations(self) -> None:
-        self.w("## Limitations", "",
-               "- **One repeat** in the quick run: noise cannot be told from effect. Large effects will be clear; small ones, "
-               "such as neighbour impact, need a targeted pass with repeats.",
+        most = max((r.settings.get("repeats") or 1 for r in self.runs), default=1)
+        repeats = ("- **One repeat**: noise cannot be told from effect. Large effects will be clear; small ones, such as "
+                   "neighbour impact, need a targeted pass with repeats." if most == 1 else
+                   f"- **{most} repeats at most**: spread across so few repeats is a rough guide, not a confidence interval. "
+                   "Configuration A ran in fewer repeats than B and C (decision 0018), so pairs with A rest on one repeat.")
+        self.w("## Limitations", "", repeats,
                "- **Coarse limit location**: the load at which a limit is reached is known only to within the gap between "
                "steps. If that bracket spans a pool-size boundary, run a targeted pass.",
                "- **Made-up load numbers**: the production-shaped profile is a guess; read its position off the ladder.",
                "- **One payload size**: no curve for payload growth.",
                "- **Read IO understated**: the seeded data is smaller than pool memory, so few physical reads occur.",
-               "- **Backup storage is not measured**: backup billing metrics update too slowly for a run of hours.",
+               "- **Backup storage is not measured**: backup billing metrics update too slowly for a run of hours. The "
+               "backup cost is derived from log written, an upper bound that ignores the free allowance.",
                "- **No retry amplification**: the load generator calls SQL directly, without an API's retries.",
                "- **Platform noise**: General Purpose uses remote storage on a shared platform.",
                "- **Sizing beyond the measured pool sizes is EXTRAPOLATION** from documented limits, linear in load, with "
@@ -488,6 +694,7 @@ class Report:
         self.eventhubs_section()
         self.client_section()
         self.sizing_section()
+        self.storage_section()
         self.applied_table()
         self.checks_section()
         self.limitations()

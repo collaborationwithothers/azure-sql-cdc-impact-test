@@ -5,6 +5,17 @@ General Purpose - Compute Gen5': 'vCore' (compute) and 'Zone Redundancy vCore'
 (the zone-redundancy add-on). Each pool size N has its own SKU, named
 'N vCore' and 'N vCore Zone Redundancy', priced per hour for the whole size.
 Monthly = hourly x 730 hours, an assumption stated in the report.
+
+A second query returns the storage meters, per GB-month (unit '1 GB/Month'):
+- product 'SQL Database Single/Elastic Pool PITR Backup Storage', meter
+  'ZRS Data Stored' (SKU 'Backup ZRS'): point-in-time restore backup storage
+  on zone-redundant backup storage, which the ephemeral databases use
+  (`storage_account_type = "Zone"`).
+- product 'SQL Database Single/Elastic Pool General Purpose - Storage', meters
+  'General Purpose Data Stored' and 'General Purpose Zone Redundancy Data
+  Stored'. Which of these a zone-redundant pool pays, and whether one adds to
+  the other, is not documented (docs/verification/2026-11-22-report-limits.md),
+  so the report shows them but does not use them.
 """
 from __future__ import annotations
 
@@ -25,14 +36,25 @@ KEEP = ("currencyCode", "retailPrice", "unitPrice", "armRegionName", "effectiveS
         "skuName", "serviceName", "unitOfMeasure", "type", "armSkuName")
 
 
+BACKUP_PRODUCT = "SQL Database Single/Elastic Pool PITR Backup Storage"
+BACKUP_METER = "ZRS Data Stored"
+BACKUP_SKU = "Backup ZRS"
+STORAGE_PRODUCT = "SQL Database Single/Elastic Pool General Purpose - Storage"
+DATA_METER = "General Purpose Data Stored"
+DATA_ZR_METER = "General Purpose Zone Redundancy Data Stored"
+GB_MONTH = "1 GB/Month"
+
+
 def odata_filter(region: str = REGION) -> str:
     return f"armRegionName eq '{region}' and priceType eq 'Consumption' and productName eq '{PRODUCT}'"
 
 
-def fetch(region: str = REGION, timeout: float = 30) -> dict:
-    """All pages of the query. Returns {"queried_at", "query", "Items"}."""
-    url = API + "?" + urllib.parse.urlencode({"$filter": odata_filter(region)})
-    query = url
+def storage_filter(region: str = REGION) -> str:
+    return (f"armRegionName eq '{region}' and priceType eq 'Consumption' and "
+            f"(productName eq '{BACKUP_PRODUCT}' or productName eq '{STORAGE_PRODUCT}')")
+
+
+def _pages(url: str, timeout: float) -> list[dict]:
     items: list[dict] = []
     pages = 0
     while url and pages < 20:
@@ -43,8 +65,16 @@ def fetch(region: str = REGION, timeout: float = 30) -> dict:
         items += page.get("Items", [])
         url = page.get("NextPageLink")
         pages += 1
+    return items
+
+
+def fetch(region: str = REGION, timeout: float = 30) -> dict:
+    """All pages of the compute and the storage query. Returns {"queried_at", "query", "storage_query", "Items"}."""
+    query = API + "?" + urllib.parse.urlencode({"$filter": odata_filter(region)})
+    storage_query = API + "?" + urllib.parse.urlencode({"$filter": storage_filter(region)})
+    items = _pages(query, timeout) + _pages(storage_query, timeout)
     return {"queried_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "query": query,
-            "Items": [{k: i.get(k) for k in KEEP} for i in items]}
+            "storage_query": storage_query, "Items": [{k: i.get(k) for k in KEEP} for i in items]}
 
 
 def load_file(path: str) -> dict:
@@ -52,6 +82,7 @@ def load_file(path: str) -> dict:
     with open(path) as f:
         data = json.load(f)
     return {"queried_at": data.get("queried_at", "unknown (from file)"), "query": data.get("query", path),
+            "storage_query": data.get("storage_query", path),
             "Items": [{k: i.get(k) for k in KEEP} for i in data.get("Items", [])]}
 
 
@@ -105,3 +136,42 @@ def parse(data: dict, sizes: list[int]) -> tuple[dict[int, PoolPrice], list[str]
             continue
         out[n] = PoolPrice(n, c, z, compute.get("currencyCode") or "", str(compute.get("effectiveStartDate") or ""))
     return out, notes
+
+
+@dataclass(frozen=True)
+class Meter:
+    product: str
+    meter: str
+    sku: str
+    per_gb_month: float
+    currency: str
+    effective: str
+
+
+def _meter(items: list[dict], product: str, meter: str, sku: str | None = None) -> Meter | None:
+    found = [i for i in items if i.get("productName") == product and i.get("meterName") == meter
+             and i.get("unitOfMeasure") == GB_MONTH and i.get("type") in (None, "Consumption")
+             and (sku is None or i.get("skuName") == sku)]
+    newest = _latest(found)
+    if newest is None:
+        return None
+    price = float(newest["retailPrice"])
+    if math.isnan(price):
+        return None
+    return Meter(product, meter, str(newest.get("skuName") or ""), price, newest.get("currencyCode") or "",
+                 str(newest.get("effectiveStartDate") or ""))
+
+
+@dataclass(frozen=True)
+class StoragePrices:
+    backup_zrs: Meter | None
+    data: Meter | None
+    data_zone_redundancy: Meter | None
+
+
+def parse_storage(data: dict) -> StoragePrices:
+    """Per GB-month storage meters, or None for each meter the response lacks."""
+    items = data.get("Items", [])
+    return StoragePrices(_meter(items, BACKUP_PRODUCT, BACKUP_METER, BACKUP_SKU),
+                         _meter(items, STORAGE_PRODUCT, DATA_METER),
+                         _meter(items, STORAGE_PRODUCT, DATA_ZR_METER))

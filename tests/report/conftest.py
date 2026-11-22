@@ -47,10 +47,15 @@ def governance_row(db: str, cap=2, db_log=9 * MIB, db_io=640, pool_log=24 * MIB,
 
 def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * MIB, pool_io=2800,
               log_bytes_per_txn=None, cpu_per_100=5.0, db1_log_pct_per_100=10.0, pool_log_pct_per_100=5.0,
-              cpu_jitter=0.5, catchup_rows=None) -> RunWriter:
+              cpu_jitter=0.5, catchup_rows=None, configs_by_repeat=None, ct_bytes_per_row=8600,
+              log_scale_by_repeat=None) -> RunWriter:
     """steps: {configuration: [(target tps, achieved tps, errors, shed), ...]} run back to back.
 
     Each step: 3 min apart, measure window 120 s. Resource rows every 15 s; collector polls every 10 s.
+    configs_by_repeat: {repeat: [configurations]} (default: every configuration in every repeat), for the
+    quick run's shape (A in repeat 1 only, decision 0018). In C windows the change table cdc.dbo_Outbox_CT
+    grows by one row per transaction and ct_bytes_per_row reserved bytes per row.
+    log_scale_by_repeat: {repeat: factor} on log bytes per transaction, to give repeats a spread.
     """
     w = RunWriter(root, run_id)
     configs = list(steps)
@@ -64,7 +69,8 @@ def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * 
           phase="setup")
     log_bytes_per_txn = log_bytes_per_txn or {"A": 500, "B": 9000, "C": 17000}
     t = T0 + timedelta(minutes=1)
-    cum = {"log": 0.0, "rows_w": 0.0, "reads": 0.0, "writes": 0.0, "wait_log": 0.0, "wait_pool": 0.0, "sos": 0.0}
+    cum = {"log": 0.0, "rows_w": 0.0, "reads": 0.0, "writes": 0.0, "wait_log": 0.0, "wait_pool": 0.0, "sos": 0.0,
+           "ct_rows": 0.0, "ct_reserved": 0.0}
     k = 0
 
     def poll(at: datetime, cfg, step):
@@ -85,10 +91,14 @@ def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * 
             {"wait_type": "POOL_LOG_RATE_GOVERNOR", "waiting_tasks_count": 0, "wait_time_ms": cum["wait_pool"], "signal_wait_time_ms": 0},
             {"wait_type": "SOS_SCHEDULER_YIELD", "waiting_tasks_count": 0, "wait_time_ms": cum["sos"], "signal_wait_time_ms": 0}]},
             configuration=cfg, step=step)
+        w.rec("table_sizes", at, {"database": "db1", "rows": [
+            {"schema_name": "dbo", "table_name": "Outbox", "reserved_bytes": 0, "used_bytes": 0, "row_count": 0},
+            {"schema_name": "cdc", "table_name": "dbo_Outbox_CT", "reserved_bytes": cum["ct_reserved"],
+             "used_bytes": cum["ct_reserved"], "row_count": cum["ct_rows"]}]}, configuration=cfg, step=step)
         k += 1
 
     for repeat in range(1, repeats + 1):
-        for cfg in configs:
+        for cfg in (configs_by_repeat or {}).get(repeat, configs):
             for target, achieved, errors, shed in steps[cfg]:
                 start = t + timedelta(seconds=60)
                 end = start + timedelta(seconds=120)
@@ -117,7 +127,7 @@ def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * 
                 w.rec("pool_resource_stats", end + timedelta(seconds=40), {"database": "db1", "rows": list(reversed(pool_rows))},
                       configuration=cfg, step=target, repeat=repeat)
                 # Cumulative counters, polled every 10 s from 20 s before the window to 20 s after.
-                rate_log = log_bytes_per_txn[cfg] * achieved
+                rate_log = log_bytes_per_txn[cfg] * achieved * (log_scale_by_repeat or {}).get(repeat, 1.0)
                 for i in range(-2, 15):
                     at = start + timedelta(seconds=10 * i)
                     poll(at, cfg, target)
@@ -126,6 +136,9 @@ def write_run(root: Path, run_id: str, steps: dict, *, repeats=1, pool_log=24 * 
                         cum["rows_w"] += 8192 * achieved * 10
                         cum["writes"] += achieved * 10 / 10
                         cum["sos"] += 5
+                        if cfg == "C":
+                            cum["ct_rows"] += achieved * 10
+                            cum["ct_reserved"] += ct_bytes_per_row * achieved * 10
                         if cfg == "C" and target >= 800:
                             cum["wait_pool"] += 4000
                 # db2 windows: 10 s each across the step.

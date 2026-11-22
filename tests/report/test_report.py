@@ -13,6 +13,7 @@ from report import analysis as A
 from report import limits as L
 from report import prices as P
 from report import sizing as S
+from report import storage as ST
 from report import windows as W
 from report.__main__ import main
 from report.load import load_run
@@ -307,3 +308,129 @@ def test_malformed_lines_are_reported_not_fatal(results):
     run = load_run(results, "run-1")
     assert any("not valid JSON" in w for w in run.warnings)
     assert len(W.parse_steps(run)) == 1
+
+
+# -- storage and backup cost of CDC ---------------------------------------------------
+
+QUICK = {1: ["A", "B", "C"], 2: ["B", "C"], 3: ["B", "C"]}  # decision 0018
+SPREAD = {1: 1.0, 2: 1.02, 3: 0.98}
+
+
+def quick(results, **kw):
+    steps = {"A": [(100, 100, 0, 0)], "B": [(100, 100, 0, 0)], "C": [(100, 100, 0, 0)]}
+    return build(results, steps, repeats=3, configs_by_repeat=QUICK, log_scale_by_repeat=SPREAD, **kw)
+
+
+def test_bytes_per_change_row_from_growth_across_the_window(results):
+    run, steps, _ = build(results, {"B": [(100, 100, 0, 0)], "C": [(100, 100, 0, 0), (200, 200, 0, 0)]},
+                          ct_bytes_per_row=8600)
+    items = ST.change_rows(run, steps)
+    assert [c.step.configuration for c in items] == ["C", "C"]  # B steps give no change rows
+    assert all(c.bytes_per_row == pytest.approx(8600) for c in items)
+    assert [c.rows_per_s for c in items] == [pytest.approx(100), pytest.approx(200)]
+    per = ST.bytes_per_row(items)
+    assert per[100].mean == pytest.approx(8600) and per[100].n == 1
+
+
+def test_change_table_shrinking_in_the_window_gives_no_figure():
+    t0 = pd.Timestamp("2030-01-01T00:00:00Z")
+    # The cleanup job removed rows between the bracketing polls: no valid growth.
+    series = [(t0, {"reserved": 9e8, "rows": 1e5}), (t0 + pd.Timedelta(seconds=10), {"reserved": 5e8, "rows": 5e4})]
+    assert W.delta(series, t0, t0 + pd.Timedelta(seconds=10)) is None
+    assert ST.ct_values([{"schema_name": "dbo", "table_name": "Outbox", "reserved_bytes": 1, "row_count": 1}]) == {}
+
+
+def test_retention_arithmetic():
+    assert ST.CDC_RETENTION_MINUTES == 4320  # three days, Microsoft Learn (verification file)
+    # 8,600 bytes per row x 100 rows/s x 259,200 s = 222.9 GB.
+    assert ST.retained_bytes(8600, 100, ST.CDC_RETENTION_MINUTES * 60) / ST.GB == pytest.approx(222.912)
+    # 8,000 extra log bytes per transaction at 100 tps for a day = 69.12 GB; 8 hours a day = 23.04 GB.
+    assert ST.log_gb_per_day(8000, 100) == pytest.approx(69.12)
+    assert ST.log_gb_per_day(8000, 100, 8) == pytest.approx(23.04)
+    assert ST.backup_gb(69.12, ST.PITR_RETENTION_DAYS + ST.PITR_EXTRA_DAYS) == pytest.approx(967.68)
+
+
+def test_log_c_minus_b_uses_all_repeats_with_spread(results):
+    _, _, ms = quick(results)
+    (d,) = ST.log_diffs(ms)
+    assert d.repeats == [1, 2, 3]
+    assert d.b.value == pytest.approx(9000) and d.c.value == pytest.approx(17000)
+    assert d.uplift.absolute == pytest.approx(8000) and d.uplift.suppressed is None
+    # Spread across repeats: B 8,820 to 9,180 (360), C 16,660 to 17,340 (680); jitter is the larger.
+    assert d.uplift.jitter == pytest.approx(680)
+    assert d.paired_range.low == pytest.approx(7840) and d.paired_range.high == pytest.approx(8160)
+
+
+def test_pairs_with_a_use_repeat_1_only(results):
+    _, _, ms = quick(results)
+    rows = A.uplift_rows(ms)
+    ba = [r for r in rows if r["pair"] == "B - A"]
+    cb = [r for r in rows if r["pair"] == "C - B"]
+    assert ba and all(r["repeats"] == 1 and r["scope"].startswith("repeat 1 only") for r in ba)
+    assert cb and all(r["repeats"] == 3 and r["scope"] == "" for r in cb)
+    log = next(r for r in ba if r["metric"].startswith("log bytes"))
+    assert log["x"].value == pytest.approx(9000) and log["y"].value == pytest.approx(500)  # B repeat 1, not the mean
+
+
+def test_log_counter_reset_drops_that_repeat(results):
+    run, steps, _ = quick(results)
+    st = next(s for s in steps if s.configuration == "C" and s.repeat == 2)
+    hit = 0
+    for r in run.streams["file_stats"]:
+        if r["data"]["database"] == "db1" and pd.Timestamp(r["ts"]) == st.end:
+            for row in r["data"]["rows"]:
+                if row["type_desc"] == "LOG":
+                    row["num_of_bytes_written"] = 0.0  # the counter restarted inside the window
+                    hit += 1
+    assert hit == 1
+    (d,) = ST.log_diffs(A.step_metrics(run, steps))
+    assert d.repeats == [1, 3] and "repeat 2" in d.note
+    assert d.paired_range.n == 2 and d.c.value == pytest.approx((17000 + 16660) / 2)
+
+
+def test_storage_price_parsing_of_new_meters():
+    sp = P.parse_storage(P.load_file(str(FIXTURES / "prices_storage_sample.json")))
+    assert sp.backup_zrs.per_gb_month == 0.25  # the 2025 price, not the superseded one; not the LTR meter
+    assert sp.backup_zrs.sku == "Backup ZRS" and sp.backup_zrs.currency == "USD"
+    assert sp.data.per_gb_month == 0.12 and sp.data_zone_redundancy.per_gb_month == 0.24
+    none = P.parse_storage(P.load_file(str(FIXTURES / "prices_sample.json")))
+    assert none.backup_zrs is None and none.data is None
+    f = P.storage_filter()
+    assert P.BACKUP_PRODUCT in f and P.STORAGE_PRODUCT in f and "priceType eq 'Consumption'" in f
+
+
+def test_not_priced_unverified_path(monkeypatch):
+    sp = P.parse_storage(P.load_file(str(FIXTURES / "prices_storage_sample.json")))
+    value, note = ST.price("data storage", sp.data_zone_redundancy)
+    assert value is None and note.startswith("not priced: unverified")
+    assert ST.price("backup", sp.backup_zrs) == (0.25, "")
+    assert ST.price("backup", None)[1] == "not priced: no price for this meter in the API response"
+    assert ST.price("something else", sp.data)[0] is None
+    monkeypatch.setitem(ST.UNVERIFIED, "backup", "test reason")
+    assert ST.price("backup", sp.backup_zrs) == (None, "not priced: unverified (test reason)")
+
+
+def test_cli_storage_section(results, tmp_path):
+    write_run(results, "run-1", {"A": [(100, 100, 0, 0)], "B": [(100, 100, 0, 0)], "C": [(100, 100, 0, 0)]},
+              repeats=3, configs_by_repeat=QUICK, log_scale_by_repeat=SPREAD)
+    out = tmp_path / "out"
+    assert main([str(results), "run-1", "--out", str(out), "--prices-file", str(FIXTURES / "prices_storage_sample.json"),
+                 "--duty-hours", "8"]) == 0
+    text = (out / "README.md").read_text()
+    sec = text.split("## Storage and backup cost of CDC")[1].split("\n## ")[0]
+    assert "222.91" in sec  # 8,600 bytes x 100 rows/s x 3 days
+    assert "69.12" in sec  # extra log GB per day at 100 tps
+    # 69.12 GB/day held 7 to 14 days = 483.84 to 967.68 GB, at 0.25 per GB-month.
+    assert "120.96 to 241.92" in sec
+    assert "not priced: unverified" in sec and "EXTRAPOLATION" in sec
+    assert "h/day (assumption)" in sec
+    assert "repeat 1 only" in text  # pairs with A say so
+    assert text.isascii()
+
+
+def test_cli_storage_section_without_prices(results, tmp_path):
+    write_run(results, "run-1", {"C": [(100, 100, 0, 0)]})
+    out = tmp_path / "out"
+    main([str(results), "run-1", "--out", str(out), "--no-prices"])
+    sec = (out / "README.md").read_text().split("## Storage and backup cost of CDC")[1].split("\n## ")[0]
+    assert "needs configurations B and C" in sec and "not priced: prices were not read" in sec

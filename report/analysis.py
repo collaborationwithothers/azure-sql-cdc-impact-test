@@ -306,8 +306,25 @@ def config_value(ms: list[StepMetrics], fn) -> Value:
     return Value(mean, _std(vals[0][1]))
 
 
+def paired(mx: list[StepMetrics], my: list[StepMetrics]) -> tuple[list[StepMetrics], list[StepMetrics], list[int]]:
+    """Both configurations restricted to the repeats in which both ran.
+
+    The quick run runs A in repeat 1 only and B and C in every repeat (decision
+    0018). Comparing B's three-repeat mean with A's single repeat would mix
+    blocks, so a pair uses only the repeats it shares.
+    """
+    shared = sorted({m.step.repeat for m in mx} & {m.step.repeat for m in my})
+    return ([m for m in mx if m.step.repeat in shared], [m for m in my if m.step.repeat in shared], shared)
+
+
+def repeats_note(shared: list[int], all_repeats: list[int]) -> str:
+    if shared == all_repeats or not shared:
+        return ""
+    return "repeat " + ", ".join(str(r) for r in shared) + " only (the other configuration ran in no other repeat)"
+
+
 def uplift_rows(metrics: list[StepMetrics]) -> list[dict]:
-    """One row per (pair, step, metric) where both configurations carried the load in every repeat."""
+    """One row per (pair, step, metric) where both configurations carried the load in every shared repeat."""
     by = {}
     for m in metrics:
         by.setdefault((m.step.configuration, m.step.step_tps), []).append(m)
@@ -315,15 +332,16 @@ def uplift_rows(metrics: list[StepMetrics]) -> list[dict]:
     for x, y, meaning in PAIRS:
         steps = sorted({t for (c, t) in by if c == x} & {t for (c, t) in by if c == y})
         for t in steps:
-            mx, my = by[(x, t)], by[(y, t)]
+            mx, my, shared = paired(by[(x, t)], by[(y, t)])
+            scope = repeats_note(shared, sorted({m.step.repeat for m in by[(x, t)] + by[(y, t)]}))
             if not all(m.step.carries for m in mx + my):
-                rows.append({"pair": f"{x} - {y}", "meaning": meaning, "step": t, "metric": None,
-                             "note": "not compared: a configuration did not carry the load"})
+                rows.append({"pair": f"{x} - {y}", "meaning": meaning, "step": t, "metric": None, "repeats": len(shared),
+                             "scope": scope, "note": "not compared: a configuration did not carry the load"})
                 continue
             for name, (unit, fn) in UPLIFT_METRICS.items():
                 vx, vy = config_value(mx, fn), config_value(my, fn)
                 rows.append({"pair": f"{x} - {y}", "meaning": meaning, "step": t, "metric": name, "unit": unit,
-                             "x": vx, "y": vy, "uplift": uplift(vx, vy), "repeats": min(len(mx), len(my))})
+                             "x": vx, "y": vy, "uplift": uplift(vx, vy), "repeats": len(shared), "scope": scope})
     return rows
 
 
