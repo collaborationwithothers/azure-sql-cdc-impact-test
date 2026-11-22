@@ -8,6 +8,14 @@ set -euo pipefail
 RG="rg-cdc-impact-test"
 TF_DIR="infra/ephemeral"
 
+# Resources Azure creates on its own next to persistent ones, without tags.
+# Application Insights adds a "Failure Anomalies" smart detector alert rule.
+# Only these types are ignored by exists and verify-clean; any other untagged
+# resource still counts as a leftover.
+# The type string is exactly as Azure returns it (observed 2026-11-22).
+COMPANION_TYPE="microsoft.alertsmanagement/smartDetectorAlertRules"
+NOT_PERSISTENT="[?tags.layer!='persistent' && type!='${COMPANION_TYPE}']"
+
 mask() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$1"; return 0; }
 
 # Finds persistent resources by their purpose tag and writes their names to
@@ -69,7 +77,7 @@ destroy() {
 # Untagged resources (for example a private endpoint NIC) also fail the check.
 verify_clean() {
   local left
-  left=$(az resource list -g "$RG" --query "[?tags.layer!='persistent'].type" -o tsv)
+  left=$(az resource list -g "$RG" --query "${NOT_PERSISTENT}.type" -o tsv)
   if [ -n "$left" ]; then
     echo "NOT CLEAN. Non-persistent resources remain, by type:"
     echo "$left" | sort | uniq -c
@@ -89,7 +97,7 @@ expired() {
 # Prints "yes" if any ephemeral resource exists at all.
 exists() {
   local n
-  n=$(az resource list -g "$RG" --query "length([?tags.layer!='persistent'])" -o tsv)
+  n=$(az resource list -g "$RG" --query "length(${NOT_PERSISTENT})" -o tsv)
   [ "$n" -gt 0 ] && echo yes || echo no
 }
 
