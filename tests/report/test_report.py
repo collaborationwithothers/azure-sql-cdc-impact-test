@@ -471,6 +471,8 @@ HANDLED, P95, LOG, LOGRATE, CPU = ("Handled the load?", "Response time, 95th per
                                    "Log written per update (KB)", "Log write rate (% of the database's limit)",
                                    "CPU used (% of the database's limit)")
 NEIGH, STORAGE = "Neighbouring database response time, 95th percentile (ms)", "Storage and cost"
+POOLLOG, POOLWAIT = "Pool log write rate (% of the pool's limit)", "Time held back by the pool's log write limit (ms per second)"
+DATAIO = "Data read and write (IO) used (% of the database's limit)"
 
 
 def test_summary_quick_run_with_overloaded_step(results, tmp_path):
@@ -483,7 +485,7 @@ def test_summary_quick_run_with_overloaded_step(results, tmp_path):
     assert "4,096 characters" in s and "2 minutes after a 1-minute warm-up" in s
     assert "3 rounds without CDC and 3 with CDC" in s
     # "What this means" comes before the tables, in the order the owner asked for.
-    order = ["## What this means"] + [f"### {h}" for h in (HANDLED, P95, LOG, LOGRATE, CPU, NEIGH, STORAGE)]
+    order = ["## What this means"] + [f"### {h}" for h in (HANDLED, P95, LOG, LOGRATE, POOLLOG, POOLWAIT, DATAIO, CPU, NEIGH, STORAGE)]
     assert [s.index(h) for h in order] == sorted(s.index(h) for h in order)
     assert _row(_section(s, HANDLED), "100") == ["100", "yes", "yes", ""]
     # Log per update: 9.0 KB without, 17.0 KB with; per-round differences 8.0, 8.16, 7.84 KB.
@@ -493,6 +495,9 @@ def test_summary_quick_run_with_overloaded_step(results, tmp_path):
     assert _row(_section(s, P95), "100")[3] == "within run-to-run variation"
     assert _row(_section(s, LOGRATE), "100")[1:] == ["10.0", "20.0", "+10.0 [10.0 to 10.0]"]
     assert _row(_section(s, NEIGH), "100")[1:3] == ["8.00", "8.00"]
+    # Pool-level log: CDC's capture writes count only here. Each new table has a row per load.
+    for h in (POOLLOG, POOLWAIT, DATAIO):
+        assert len(_row(_section(s, h), "100")) == 4
     storage = _row(_section(s, STORAGE), "100")
     assert storage[1] == "222.91"
     # The overloaded load: full note once under the first table, short form on its row in every table.

@@ -140,3 +140,7 @@ these rules carry the whole burden of not publishing noise as a result.
 - Smoke run of the CLI against spike run 45054291170-1, output kept outside
   the repository.
 - Limits: `docs/verification/2026-11-22-report-limits.md`.
+
+### Amendment 2026-11-22: pool-level log in the summary
+
+The first real quick run (45062722769-1) showed that CDC's capture writes do not appear in the application database's `avg_log_write_percent`. They count at pool level, as `POOL_LOG_RATE_GOVERNOR` waits and a higher pool `avg_log_write_percent`. The summary therefore adds three tables: pool log write rate, time held back by the pool's log write limit, and the database's data IO. When the first failing load is limited by workers, the summary also names the resource closest to its limit at the load below, because workers pile up behind another wait. The monthly cost line now states that it is an upper bound and splits it into compute and backup storage.
