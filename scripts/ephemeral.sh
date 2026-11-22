@@ -14,10 +14,10 @@ mask() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$1"; return 0; }
 # $GITHUB_ENV, masked, so no generated name is printed in a public log.
 discover() {
   local sa acr law rig rig_client
-  sa=$(az resource list -g "$RG" --tag purpose=state-and-results --query "[0].name" -o tsv)
-  acr=$(az resource list -g "$RG" --tag purpose=images --query "[0].name" -o tsv)
-  law=$(az resource list -g "$RG" --tag purpose=diagnostics --query "[0].name" -o tsv)
-  rig=$(az resource list -g "$RG" --tag purpose=rig-identity --query "[0].name" -o tsv)
+  sa=$(az resource list -g "$RG" --query "[?tags.purpose=='state-and-results'].name | [0]" -o tsv)
+  acr=$(az resource list -g "$RG" --query "[?tags.purpose=='images'].name | [0]" -o tsv)
+  law=$(az resource list -g "$RG" --query "[?tags.purpose=='diagnostics'].name | [0]" -o tsv)
+  rig=$(az resource list -g "$RG" --query "[?tags.purpose=='rig-identity'].name | [0]" -o tsv)
   [ -n "$sa" ] && [ -n "$acr" ] && [ -n "$law" ] && [ -n "$rig" ] || { echo "Persistent layer not found"; exit 1; }
   rig_client=$(az identity show -g "$RG" -n "$rig" --query clientId -o tsv)
   for v in "$sa" "$acr" "$law" "$rig_client"; do mask "$v"; done
@@ -51,12 +51,12 @@ destroy() {
   # Belt and braces: delete anything still tagged as ephemeral. Persistent
   # resources carry layer=persistent and are never matched.
   local ids
-  ids=$(az resource list -g "$RG" --tag layer=ephemeral --query "[].id" -o tsv)
+  ids=$(az resource list -g "$RG" --query "[?tags.layer=='ephemeral'].id" -o tsv)
   if [ -n "$ids" ]; then
     echo "Deleting $(echo "$ids" | wc -l) leftover ephemeral resources."
     # Several passes, because some resources depend on others.
     for _ in 1 2 3; do
-      ids=$(az resource list -g "$RG" --tag layer=ephemeral --query "[].id" -o tsv)
+      ids=$(az resource list -g "$RG" --query "[?tags.layer=='ephemeral'].id" -o tsv)
       [ -z "$ids" ] && break
       echo "$ids" | xargs -r -n 20 az resource delete --ids >/dev/null 2>&1 || true
     done
@@ -80,7 +80,7 @@ verify_clean() {
 expired() {
   local now
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  az resource list -g "$RG" --tag layer=ephemeral --query "[].tags.deadline" -o tsv |
+  az resource list -g "$RG" --query "[?tags.layer=='ephemeral'].tags.deadline" -o tsv |
     awk -v now="$now" '$0 != "" && $0 < now { found=1 } END { print (found ? "yes" : "no") }'
 }
 
