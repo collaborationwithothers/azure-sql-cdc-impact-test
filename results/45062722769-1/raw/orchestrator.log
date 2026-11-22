@@ -1,0 +1,112 @@
+run 45062722769-1 mode quick starting; telemetry on
+check connect_cdcdb1: ok 
+check governance_cdcdb1: ok 2 rows
+check connect_cdcdb2: ok 
+check governance_cdcdb2: ok 2 rows
+check dmv_db_resource_stats: ok 8 rows
+check dmv_file_stats: ok 2 rows
+check dmv_db_wait_stats: ok 3 rows
+check dmv_log_space: ok 1 rows
+check dmv_table_sizes: ok 0 rows
+check dmv_perf_counters: ok 9 rows
+check dmv_cdc_scan_sessions: ok 0 rows
+check dmv_cdc_errors: ok 0 rows
+check dmv_pool_resource_stats: ok 8 rows
+check dmv_os_wait_stats: ok 19 rows
+2026-11-22T19:58:39.470732+00:00 [seed None None] seed cdcdb2: 554 MiB after 141 s
+2026-11-22T19:58:39.483808+00:00 [seed None None] seed cdcdb1: 554 MiB after 141 s
+2026-11-22T20:01:04.520923+00:00 [seed None None] seed cdcdb2: 1110 MiB after 286 s
+2026-11-22T20:01:04.759428+00:00 [seed None None] seed cdcdb1: 1110 MiB after 286 s
+2026-11-22T20:03:29.798743+00:00 [seed None None] seed cdcdb2: 1665 MiB after 431 s
+2026-11-22T20:03:30.027080+00:00 [seed None None] seed cdcdb1: 1665 MiB after 431 s
+2026-11-22T20:05:55.023021+00:00 [seed None None] seed cdcdb2: 2220 MiB after 576 s
+2026-11-22T20:05:55.108567+00:00 [seed None None] seed cdcdb1: 2220 MiB after 576 s
+2026-11-22T20:08:20.324142+00:00 [seed None None] seed cdcdb2: 2775 MiB after 722 s
+2026-11-22T20:08:20.336215+00:00 [seed None None] seed cdcdb1: 2775 MiB after 722 s
+2026-11-22T20:10:45.356875+00:00 [seed None None] seed cdcdb2: 3330 MiB after 867 s
+2026-11-22T20:10:45.782737+00:00 [seed None None] seed cdcdb1: 3330 MiB after 867 s
+2026-11-22T20:13:10.778932+00:00 [seed None None] seed cdcdb2: 3885 MiB after 1012 s
+2026-11-22T20:13:11.033417+00:00 [seed None None] seed cdcdb1: 3885 MiB after 1012 s
+2026-11-22T20:15:35.818291+00:00 [seed None None] seed cdcdb2: 4440 MiB after 1157 s
+2026-11-22T20:15:36.096874+00:00 [seed None None] seed cdcdb1: 4440 MiB after 1157 s
+2026-11-22T20:18:01.335023+00:00 [seed None None] seed cdcdb2: 4995 MiB after 1303 s
+2026-11-22T20:18:01.649758+00:00 [seed None None] seed cdcdb1: 4995 MiB after 1303 s
+2026-11-22T20:20:26.623563+00:00 [seed None None] seed cdcdb2: 5550 MiB after 1448 s
+2026-11-22T20:20:27.127119+00:00 [seed None None] seed cdcdb1: 5550 MiB after 1448 s
+2026-11-22T20:22:52.124267+00:00 [seed None None] seed cdcdb2: 6105 MiB after 1593 s
+2026-11-22T20:22:52.373438+00:00 [seed None None] seed cdcdb1: 6105 MiB after 1594 s
+2026-11-22T20:25:17.603420+00:00 [seed None None] seed cdcdb1: 6660 MiB after 1739 s
+2026-11-22T20:25:17.840775+00:00 [seed None None] seed cdcdb2: 6660 MiB after 1739 s
+2026-11-22T20:27:42.893864+00:00 [seed None None] seed cdcdb1: 7215 MiB after 1884 s
+2026-11-22T20:27:42.904264+00:00 [seed None None] seed cdcdb2: 7215 MiB after 1884 s
+2026-11-22T20:30:08.154842+00:00 [seed None None] seed cdcdb2: 7770 MiB after 2030 s
+2026-11-22T20:30:08.679829+00:00 [seed None None] seed cdcdb1: 7770 MiB after 2030 s
+2026-11-22T20:32:33.411119+00:00 [seed None None] seed cdcdb2: 8325 MiB after 2175 s
+2026-11-22T20:32:34.355993+00:00 [seed None None] seed cdcdb1: 8325 MiB after 2176 s
+2026-11-22T20:34:58.626833+00:00 [seed None None] seed cdcdb2: 8880 MiB after 2320 s
+2026-11-22T20:34:59.837811+00:00 [seed None None] seed cdcdb1: 8880 MiB after 2321 s
+2026-11-22T20:37:23.859359+00:00 [seed None None] seed cdcdb2: 9435 MiB after 2465 s
+2026-11-22T20:37:25.358114+00:00 [seed None None] seed cdcdb1: 9435 MiB after 2467 s
+2026-11-22T20:39:49.096204+00:00 [seed None None] seed cdcdb2: 9990 MiB after 2610 s
+2026-11-22T20:39:50.560402+00:00 [seed None None] seed cdcdb1: 9990 MiB after 2612 s
+2026-11-22T20:41:34.770307+00:00 [seed None None] seed cdcdb1 done: 184500000 rows, 10240 MiB, 2716 s
+2026-11-22T20:41:55.238212+00:00 [seed None None] seed cdcdb2 done: 184500000 rows, 10240 MiB, 2737 s
+2026-11-22T20:45:58.373140+00:00 [measure A 100] achieved 100.0/100 tps, p95 17.3 ms, errors 0, shed 0, client cpu 6.5%
+2026-11-22T20:48:59.184731+00:00 [measure A 200] achieved 200.0/200 tps, p95 17.5 ms, errors 0, shed 0, client cpu 10.2%
+2026-11-22T20:51:59.983365+00:00 [measure A 300] achieved 300.0/300 tps, p95 22.2 ms, errors 0, shed 0, client cpu 8.4%
+2026-11-22T20:55:00.796206+00:00 [measure A 400] achieved 399.9/400 tps, p95 44.3 ms, errors 0, shed 0, client cpu 11.5%
+2026-11-22T20:58:01.899921+00:00 [measure A 500] achieved 499.4/500 tps, p95 169.6 ms, errors 0, shed 0, client cpu 28.7%
+2026-11-22T21:02:16.820461+00:00 [measure B 100] achieved 100.0/100 tps, p95 20.3 ms, errors 0, shed 0, client cpu 6.5%
+2026-11-22T21:05:17.679109+00:00 [measure B 200] achieved 200.0/200 tps, p95 16.8 ms, errors 0, shed 0, client cpu 10.2%
+2026-11-22T21:08:18.584198+00:00 [measure B 300] achieved 300.0/300 tps, p95 20.3 ms, errors 0, shed 0, client cpu 8.4%
+2026-11-22T21:11:19.418322+00:00 [measure B 400] achieved 400.0/400 tps, p95 25.2 ms, errors 0, shed 0, client cpu 11.6%
+2026-11-22T21:14:26.393122+00:00 [measure B 500] achieved 479.5/500 tps, p95 4846.9 ms, errors 13, shed 0, client cpu 28.7%
+2026-11-22T21:18:34.315899+00:00 [purge B None] purge: 269974 rows in 248 s, log 4582 MiB
+check cdc_enable: ok 
+check debezium_started: ok 12 s
+check debezium_metrics_readable: ok 43 series
+2026-11-22T21:22:50.875783+00:00 [measure C 100] achieved 100.0/100 tps, p95 14.6 ms, errors 0, shed 0, client cpu 6.7%
+2026-11-22T21:25:51.806294+00:00 [measure C 200] achieved 200.0/200 tps, p95 24.0 ms, errors 0, shed 0, client cpu 10.3%
+2026-11-22T21:28:52.653480+00:00 [measure C 300] achieved 300.0/300 tps, p95 23.0 ms, errors 0, shed 0, client cpu 8.2%
+2026-11-22T21:31:53.546679+00:00 [measure C 400] achieved 399.9/400 tps, p95 43.9 ms, errors 0, shed 0, client cpu 11.2%
+2026-11-22T21:35:11.795986+00:00 [measure C 500] achieved 440.8/500 tps, p95 11707.6 ms, errors 35, shed 2078, client cpu 27.8%
+2026-11-22T21:35:11.796040+00:00 [measure C 500] stop rule: achieved rate below the stop ratio; not climbing further
+check catchup_ladder_C_r1: FAILED 900 s (capture 2 s), events None, change rows 267875
+2026-11-22T21:54:22.419462+00:00 [purge C None] purge: 267875 rows in 250 s, log 7106 MiB
+check catchup_purge_C_r1: FAILED 902 s (capture 3 s), events None, change rows 535751
+check cdc_change_job_retention: ok 
+check cdc_marker_captured: ok 6 s
+check cdc_cleanup_on_demand: ok 
+2026-11-22T22:17:58.262790+00:00 [cdc_cleanup C None] cdc cleanup: 535752 -> 1 change rows in 508 s
+check debezium_alive_at_end_r1: FAILED 
+2026-11-22T22:22:02.235545+00:00 [measure B 100] achieved 100.0/100 tps, p95 14.7 ms, errors 0, shed 0, client cpu 6.5%
+2026-11-22T22:25:02.978033+00:00 [measure B 200] achieved 200.0/200 tps, p95 16.9 ms, errors 0, shed 0, client cpu 10.1%
+2026-11-22T22:28:03.735194+00:00 [measure B 300] achieved 300.0/300 tps, p95 23.1 ms, errors 0, shed 0, client cpu 8.2%
+2026-11-22T22:31:04.548517+00:00 [measure B 400] achieved 399.9/400 tps, p95 59.0 ms, errors 0, shed 0, client cpu 12.5%
+2026-11-22T22:34:25.408365+00:00 [measure B 500] achieved 449.4/500 tps, p95 11913.5 ms, errors 21, shed 1147, client cpu 28.5%
+2026-11-22T22:34:25.408415+00:00 [measure B 500] stop rule: achieved rate below the stop ratio; not climbing further
+check cdc_enable: ok 
+check debezium_started: ok 12 s
+check debezium_metrics_readable: ok 43 series
+2026-11-22T22:38:42.627079+00:00 [measure C 100] achieved 100.0/100 tps, p95 13.7 ms, errors 0, shed 0, client cpu 6.7%
+2026-11-22T22:41:43.471175+00:00 [measure C 200] achieved 200.0/200 tps, p95 16.2 ms, errors 0, shed 0, client cpu 10.2%
+2026-11-22T22:44:44.302605+00:00 [measure C 300] achieved 300.0/300 tps, p95 20.8 ms, errors 0, shed 0, client cpu 8.6%
+2026-11-22T22:47:45.353331+00:00 [measure C 400] achieved 400.0/400 tps, p95 29.7 ms, errors 0, shed 0, client cpu 11.9%
+2026-11-22T22:50:48.088353+00:00 [measure C 500] achieved 492.8/500 tps, p95 5209.4 ms, errors 42, shed 0, client cpu 30.0%
+check catchup_ladder_C_r2: FAILED 900 s (capture 4 s), events None, change rows 269959
+check debezium_alive_at_end_r2: FAILED 
+2026-11-22T23:09:51.077088+00:00 [measure B 100] achieved 100.0/100 tps, p95 14.7 ms, errors 0, shed 0, client cpu 6.5%
+2026-11-22T23:12:51.755148+00:00 [measure B 200] achieved 200.0/200 tps, p95 14.0 ms, errors 0, shed 0, client cpu 10.2%
+2026-11-22T23:15:52.600491+00:00 [measure B 300] achieved 299.9/300 tps, p95 25.6 ms, errors 0, shed 0, client cpu 8.8%
+2026-11-22T23:18:53.401590+00:00 [measure B 400] achieved 400.0/400 tps, p95 20.4 ms, errors 0, shed 0, client cpu 11.6%
+2026-11-22T23:21:54.106525+00:00 [measure B 500] achieved 499.9/500 tps, p95 29.8 ms, errors 0, shed 0, client cpu 29.2%
+check cdc_enable: ok 
+check debezium_started: ok 11 s
+check debezium_metrics_readable: ok 43 series
+2026-11-22T23:26:24.891766+00:00 [measure C 100] achieved 100.0/100 tps, p95 13.7 ms, errors 0, shed 0, client cpu 6.5%
+2026-11-22T23:29:25.785199+00:00 [measure C 200] achieved 200.0/200 tps, p95 18.7 ms, errors 0, shed 0, client cpu 10.1%
+2026-11-22T23:32:26.656596+00:00 [measure C 300] achieved 300.0/300 tps, p95 17.0 ms, errors 0, shed 0, client cpu 8.1%
+2026-11-22T23:35:27.623593+00:00 [measure C 400] achieved 400.0/400 tps, p95 29.4 ms, errors 0, shed 0, client cpu 11.6%
+2026-11-22T23:38:28.520038+00:00 [measure C 500] achieved 499.9/500 tps, p95 104.5 ms, errors 0, shed 0, client cpu 29.5%
+check catchup_ladder_C_r3: ok 4 s (capture 4 s), events 270001.0, change rows 270001
+check debezium_alive_at_end_r3: ok 

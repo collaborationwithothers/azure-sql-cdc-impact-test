@@ -1,0 +1,119 @@
+{
+  "run_id": "45062722769-1",
+  "mode": "quick",
+  "status": "succeeded",
+  "error": null,
+  "started": "2026-11-22T19:56:13.423805+00:00",
+  "finished": "2026-11-22T23:38:35.954753+00:00",
+  "telemetry": true,
+  "checks": {
+    "connect_cdcdb1": {
+      "ok": true,
+      "detail": null
+    },
+    "governance_cdcdb1": {
+      "ok": true,
+      "detail": "2 rows"
+    },
+    "connect_cdcdb2": {
+      "ok": true,
+      "detail": null
+    },
+    "governance_cdcdb2": {
+      "ok": true,
+      "detail": "2 rows"
+    },
+    "dmv_db_resource_stats": {
+      "ok": true,
+      "detail": "8 rows"
+    },
+    "dmv_file_stats": {
+      "ok": true,
+      "detail": "2 rows"
+    },
+    "dmv_db_wait_stats": {
+      "ok": true,
+      "detail": "3 rows"
+    },
+    "dmv_log_space": {
+      "ok": true,
+      "detail": "1 rows"
+    },
+    "dmv_table_sizes": {
+      "ok": true,
+      "detail": "0 rows"
+    },
+    "dmv_perf_counters": {
+      "ok": true,
+      "detail": "9 rows"
+    },
+    "dmv_cdc_scan_sessions": {
+      "ok": true,
+      "detail": "0 rows"
+    },
+    "dmv_cdc_errors": {
+      "ok": true,
+      "detail": "0 rows"
+    },
+    "dmv_pool_resource_stats": {
+      "ok": true,
+      "detail": "8 rows"
+    },
+    "dmv_os_wait_stats": {
+      "ok": true,
+      "detail": "19 rows"
+    },
+    "cdc_enable": {
+      "ok": true,
+      "detail": null
+    },
+    "debezium_started": {
+      "ok": true,
+      "detail": "11 s"
+    },
+    "debezium_metrics_readable": {
+      "ok": true,
+      "detail": "43 series"
+    },
+    "catchup_ladder_C_r1": {
+      "ok": false,
+      "detail": "900 s (capture 2 s), events None, change rows 267875"
+    },
+    "catchup_purge_C_r1": {
+      "ok": false,
+      "detail": "902 s (capture 3 s), events None, change rows 535751"
+    },
+    "cdc_change_job_retention": {
+      "ok": true,
+      "detail": null
+    },
+    "cdc_marker_captured": {
+      "ok": true,
+      "detail": "6 s"
+    },
+    "cdc_cleanup_on_demand": {
+      "ok": true,
+      "detail": null
+    },
+    "debezium_alive_at_end_r1": {
+      "ok": false,
+      "detail": null
+    },
+    "catchup_ladder_C_r2": {
+      "ok": false,
+      "detail": "900 s (capture 4 s), events None, change rows 269959"
+    },
+    "debezium_alive_at_end_r2": {
+      "ok": false,
+      "detail": null
+    },
+    "catchup_ladder_C_r3": {
+      "ok": true,
+      "detail": "4 s (capture 4 s), events 270001.0, change rows 270001"
+    },
+    "debezium_alive_at_end_r3": {
+      "ok": true,
+      "detail": null
+    }
+  }
+}
