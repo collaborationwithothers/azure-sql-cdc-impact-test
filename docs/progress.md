@@ -20,7 +20,7 @@ Rules for this file:
 | 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | In progress, branch `agent/rig`. Restructuring to decision 0010 |
 | 3 | Load generator, collector, orchestrator, smoke mode | Not started |
 | 4 | `run-test`, `sweep`, `destroy`. Prove destroy on success, failure, timeout | Not started |
-| 5 | Report generator and sizing translation | Not started |
+| 5 | Report generator and sizing translation | In progress, branch `agent/report-generator` (decision 0016). Unit tests pass; smoke-tested on spike run 45054291170-1 |
 | 6 | Quick run at 4 vCores, review, publish report on `results` branch | Not started |
 | 7 | Confirming run at 6 vCores | Not started |
 
@@ -88,6 +88,11 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [ ] Event Hubs delivery: the export step now reads `IncomingMessages` from
       Azure Monitor before destroy. Proof due in the next run that sends events.
 - [ ] Debezium telemetry missing from Application Insights (decision 0014).
+- [ ] Catch-up timing is understated: `wait_for_catchup` declares catch-up
+      when Debezium has seen as many events as the change table holds, before
+      capture has copied every committed change. Run 45054291170-1: 8,841 of
+      9,000 ladder changes, 9,000 of 20,000 after top-up, 35,000 of 40,000
+      after purge. Found by the report generator's catch-up check.
 - [ ] Destroy on failure: run 45058781127 (inject=fail).
 - [ ] Destroy on timeout: waived for today's runs by the owner (decision 0015); run it afterwards.
 - [x] Destroy on failure proved: run 45058781127, 14 destroyed, verify-clean passed.
