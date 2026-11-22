@@ -66,26 +66,7 @@ case "${1:-}" in
     terraform -chdir="$DIR" plan -input=false -out="$PLAN"
     echo
     echo "Resource addresses and resource groups in the plan:"
-    terraform -chdir="$DIR" show -json "$PLAN" | python3 -c '
-import json, sys
-p = json.load(sys.stdin)
-bad = []
-for rc in p.get("resource_changes", []):
-    a = rc["change"]["actions"]
-    after = rc["change"].get("after") or {}
-    rg = after.get("resource_group_name") or after.get("name") if rc["type"] == "azurerm_resource_group" else after.get("resource_group_name")
-    print(f"  {a} {rc[\"address\"]}  rg={rg}")
-    if "delete" in a:
-        bad.append(rc["address"] + " is deleted")
-    scope = after.get("scope")
-    if scope and "/resourceGroups/rg-cdc-impact-test" not in scope:
-        bad.append(rc["address"] + " has a scope outside the project resource group")
-    if rg not in (None, "rg-cdc-impact-test"):
-        bad.append(rc["address"] + " targets another resource group")
-if bad:
-    print("PLAN REJECTED:"); [print("  " + b) for b in bad]; sys.exit(1)
-print("Plan check passed: only this project resource group is touched, nothing is deleted.")
-'
+    terraform -chdir="$DIR" show -json "$PLAN" | python3 "$(dirname "$0")/plan_check.py" "$RG" || { rm -f "$PLAN"; die "plan rejected"; }
     ;;
   apply)
     check_subscription

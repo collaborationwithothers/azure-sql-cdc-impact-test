@@ -18,15 +18,17 @@ discover() {
   acr=$(az resource list -g "$RG" --query "[?tags.purpose=='images'].name | [0]" -o tsv)
   law=$(az resource list -g "$RG" --query "[?tags.purpose=='diagnostics'].name | [0]" -o tsv)
   rig=$(az resource list -g "$RG" --query "[?tags.purpose=='rig-identity'].name | [0]" -o tsv)
+  appi=$(az resource list -g "$RG" --query "[?tags.purpose=='telemetry'].name | [0]" -o tsv)
   [ -n "$sa" ] && [ -n "$acr" ] && [ -n "$law" ] && [ -n "$rig" ] || { echo "Persistent layer not found"; exit 1; }
   rig_client=$(az identity show -g "$RG" -n "$rig" --query clientId -o tsv)
-  for v in "$sa" "$acr" "$law" "$rig_client"; do mask "$v"; done
+  for v in "$sa" "$acr" "$law" "$rig_client" "$appi"; do mask "$v"; done
   {
     echo "STATE_ACCOUNT=$sa"
     echo "TF_VAR_storage_account_name=$sa"
     echo "TF_VAR_acr_name=$acr"
     echo "TF_VAR_log_analytics_workspace_name=$law"
     echo "TF_VAR_rig_identity_name=$rig"
+    echo "TF_VAR_application_insights_name=$appi"
     echo "ACR_LOGIN_SERVER=$acr.azurecr.io"
     echo "RIG_CLIENT_ID=$rig_client"
   } >> "${GITHUB_ENV:-/dev/stdout}"

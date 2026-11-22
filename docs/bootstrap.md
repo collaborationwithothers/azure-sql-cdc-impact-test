@@ -12,7 +12,8 @@ All of it lives in one resource group, `rg-cdc-impact-test`, in Sweden Central.
 | Resource | Why it exists |
 | --- | --- |
 | Storage account, containers `tfstate` and `results` | Terraform state for both layers, and raw results written by the test rig. Shared key access is off. |
-| Log Analytics workspace | Pool and database metrics must outlive the pool. |
+| Log Analytics workspace | Pool and database metrics must outlive the pool. Every resource in both layers sends all its platform logs and metrics here through diagnostic settings (`infra/modules/diagnostics`). |
+| Application Insights | Workspace-based, local authentication off. Telemetry from the load generator, orchestrator and Debezium (decision 0011). |
 | Container registry (Basic) | Holds the test-rig image. See `docs/decisions/0003-container-registry.md`. |
 | Pipeline managed identity | GitHub Actions signs in as this identity through OpenID Connect federation. It is Contributor on this resource group only. |
 | Test-rig managed identity | The test-rig container runs as this identity. It becomes the Entra admin of each ephemeral SQL server. |

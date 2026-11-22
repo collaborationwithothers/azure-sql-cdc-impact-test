@@ -85,8 +85,22 @@ resource "azurerm_log_analytics_workspace" "this" {
   location            = azurerm_resource_group.this.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  daily_quota_gb      = 2
+  daily_quota_gb      = 5
   tags                = merge(local.tags, { purpose = "diagnostics" })
+}
+
+# Application Insights on the same workspace (decision 0011). Local
+# authentication is off, so only Entra-authenticated telemetry is accepted and
+# the connection string carries no write access.
+resource "azurerm_application_insights" "this" {
+  name                         = "appi-cdc-impact-${local.suffix}"
+  resource_group_name          = azurerm_resource_group.this.name
+  location                     = azurerm_resource_group.this.location
+  workspace_id                 = azurerm_log_analytics_workspace.this.id
+  application_type             = "other"
+  local_authentication_enabled = false
+  retention_in_days            = 30
+  tags                         = merge(local.tags, { purpose = "telemetry" })
 }
 
 # ---------------------------------------------------------------------------
@@ -193,6 +207,13 @@ resource "azurerm_role_assignment" "rig_eventhubs_receiver" {
   principal_type       = "ServicePrincipal"
 }
 
+resource "azurerm_role_assignment" "rig_telemetry" {
+  scope                = azurerm_application_insights.this.id
+  role_definition_name = "Monitoring Metrics Publisher"
+  principal_id         = azurerm_user_assigned_identity.rig.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 # The person or agent running the bootstrap needs blob data access to migrate
 # the persistent state into the account and to read results locally.
 data "azurerm_client_config" "current" {}
@@ -249,5 +270,27 @@ resource "azurerm_consumption_budget_resource_group" "this" {
 
   lifecycle {
     ignore_changes = [time_period]
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Diagnostic settings: every platform log and metric category of every
+# resource that supports diagnostic settings goes to the workspace.
+# - Managed identities, role assignments and the budget have no diagnostic
+#   settings in Azure.
+# - Application Insights is workspace-based: its telemetry is already stored
+#   in this workspace, so a diagnostic setting would only duplicate it.
+# - Storage: the account carries metrics; the blob service carries the
+#   read, write and delete logs.
+# ---------------------------------------------------------------------------
+
+module "diagnostics" {
+  source                     = "../modules/diagnostics"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+  targets = {
+    storage_account = azurerm_storage_account.this.id
+    blob_service    = "${azurerm_storage_account.this.id}/blobServices/default"
+    log_analytics   = azurerm_log_analytics_workspace.this.id
+    registry        = azurerm_container_registry.this.id
   }
 }
