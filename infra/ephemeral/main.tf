@@ -107,7 +107,11 @@ resource "azurerm_mssql_database" "db" {
   elastic_pool_id      = azurerm_mssql_elasticpool.this.id
   max_size_gb          = var.database_max_size_gb
   storage_account_type = "Zone"
-  tags                 = local.tags
+  # Must match the pool. The provider sends false when this is unset, and the
+  # API rejects it: "The zone resilience value of the database and elastic
+  # pool should match." (spike run 45049809770).
+  zone_redundant = true
+  tags           = local.tags
 }
 
 # ---------------------------------------------------------------------------

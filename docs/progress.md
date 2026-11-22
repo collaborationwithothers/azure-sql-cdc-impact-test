@@ -60,7 +60,7 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [x] Container tests (local, linux/amd64): Python 27/27; Debezium control
       protocol 4/4. Bug found and fixed: CDC cleanup never deleted rows at the
       current maximum LSN; a marker row now moves the mark past them.
-- [ ] PR, CI green, merge.
+- [x] PR, CI green, merge (PRs #5, #6).
 - [x] Resource group snapshot around the first ephemeral apply (run
       45049809770, 2026-11-22): 29 groups before, the same 29 while the
       Container Apps environment existed. No group outside the project
@@ -68,7 +68,12 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [x] First spike dispatch (run 45049353274) refused by preflight: an untagged
       "Failure Anomalies" alert rule that Azure adds with Application
       Insights. Allowlisted by exact type (PR #6). Nothing was created.
-- [ ] Spike run 45049809770 in progress.
+- [x] Spike run 45049809770 failed at `terraform apply`: both databases
+      returned "The zone resilience value of the database and elastic pool
+      should match." The provider sends `zone_redundant = false` when the
+      argument is unset (provider source, v5.14.0). Fix: set it to `true` on
+      the databases. The rig never started, so no spike item was tested.
+- [ ] Spike re-run after the fix.
 - [ ] Record spike results per design section 12 items 1 to 8.
 
 ## Open questions carried forward
