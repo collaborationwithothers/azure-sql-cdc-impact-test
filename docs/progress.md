@@ -61,8 +61,14 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
       protocol 4/4. Bug found and fixed: CDC cleanup never deleted rows at the
       current maximum LSN; a marker row now moves the mark past them.
 - [ ] PR, CI green, merge.
-- [ ] Retake resource group snapshot, dispatch `run-test` mode `spike`,
-      compare snapshot (decision 0008).
+- [x] Resource group snapshot around the first ephemeral apply (run
+      45049809770, 2026-11-22): 29 groups before, the same 29 while the
+      Container Apps environment existed. No group outside the project
+      (decision 0008 open question closed).
+- [x] First spike dispatch (run 45049353274) refused by preflight: an untagged
+      "Failure Anomalies" alert rule that Azure adds with Application
+      Insights. Allowlisted by exact type (PR #6). Nothing was created.
+- [ ] Spike run 45049809770 in progress.
 - [ ] Record spike results per design section 12 items 1 to 8.
 
 ## Open questions carried forward
