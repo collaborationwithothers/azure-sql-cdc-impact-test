@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CdcImpact.Orchestrator</RootNamespace>
+    <AssemblyName>rig</AssemblyName>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../loadgen/LoadGen.csproj" />
+    <ProjectReference Include="../collector/Collector.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.git/
+.terraform/
+**/.terraform/
+tests/
+report/
+docs/
+infra/
