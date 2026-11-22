@@ -229,10 +229,11 @@ src/rig/                Python package cdcrig: orchestrator and collector (decis
 debezium/               Debezium image: token jar, control script, Java agent config
 infra/modules/          Shared Terraform modules (diagnostics)
 sql/                    Schema, seed and CDC scripts
-report/                 Python report and sizing generator
+report/                 Python report and sizing generator (python -m report; decision 0016)
 tests/unit/             .NET unit tests
 tests/containers/       .NET container tests (load generator against SQL Server)
 tests/rig/              Python tests and the container test runner
+tests/report/           Report generator tests on synthetic fixtures
 .github/workflows/      validate, run-test, sweep, destroy
 ```
 
@@ -265,5 +266,12 @@ and anything a new session would otherwise have to rediscover.
 - Result files are scrubbed by `scripts/sanitize.py` before upload as artifacts.
 - Pushing a rebased branch needs a force-push, which auto mode blocks. Push to
   a new branch name instead.
+- Report: `pip install -r report/requirements.txt`, then
+  `python -m report <results_dir> <run_id> [<run_id> ...] --out <dir>`
+  (`--prices-file <saved API response>` or `--no-prices` for offline). Tests:
+  `python -m pytest tests/report -q`. Run against downloaded results with
+  `python -I` from outside the results directory. Notes and the `run-test`
+  hook: `report/README-dev.md`. Limits it uses:
+  `docs/verification/2026-11-22-report-limits.md`.
 - The repo uses GitHub's immutable OIDC subject format. The prefix comes from
   `gh api repos/collaborationwithothers/azure-sql-cdc-impact-test/actions/oidc/customization/sub`.
