@@ -80,6 +80,30 @@ these rules carry the whole burden of not publishing noise as a result.
   from the sizing table plus the backup upper bound, load sustained 24 hours a
   day. `--duty-hours H` adds a column for a reader-chosen duty cycle; it scales
   log and change rows, not compute.
+- **Plain-language summary (added 2026-11-22).** The CLI also writes
+  `SUMMARY.md`, linked from the top of `README.md`, for a reader with no
+  context; `README.md` stays the technical appendix. It avoids the
+  appendix's vocabulary: "the application database" and "the neighbouring
+  database", "without CDC" (B) and "with CDC" (C), "round" for a repeat,
+  "run-to-run variation" for jitter. Configuration A is not shown. "What this
+  means" comes first, after the opening paragraph. Then one small table per
+  metric (at most 5 columns, rows per load, each with a one-sentence
+  explanation): handled or not, p95 response time, log per update, log write
+  rate and CPU (percent of the application database's limit), the
+  neighbouring database's p95, and storage and cost (change-table size at
+  the default retention, extra monthly cost). It computes nothing new: means over shared
+  rounds (`analysis.paired`, `config_value`), the uplift rule
+  (`analysis.uplift`; "within run-to-run variation"), the per-round range in
+  brackets (`analysis.paired_diffs`, shared with the extra-log table), the
+  change-table retention arithmetic, and the monthly total the README's
+  storage section computed (`render.Report.monthly_total`). The opening
+  paragraph takes its numbers from the run's settings, governance,
+  environment and seed records. One departure from the uplift table: a load
+  that one side did not handle still shows its difference, noted "overloaded:
+  compares two overloaded systems, not the steady cost of CDC", because the
+  owner asked to see where the system stops coping. The "added cost" bullet
+  uses only the highest load both sides handled in every shared round. Any
+  missing value says "not measured".
 
 ## Alternatives rejected
 
@@ -107,7 +131,10 @@ these rules carry the whole burden of not publishing noise as a result.
   price parsing, catch-up check, end to end through the CLI. Added 2026-11-22:
   bytes per change row, retention arithmetic, C - B log over three repeats with
   a counter reset, pairs with A on repeat 1 only, storage meter parsing, the
-  "not priced: unverified" path (44 tests).
+  "not priced: unverified" path (44 tests). Added 2026-11-22: `SUMMARY.md` on a
+  quick-run shape with an overloaded 500 tps step, the within-variation path,
+  missing figures, a banned-word check and agreement with `README.md`
+  (47 tests).
 - Smoke run of the storage section against smoke run 45060216523-1 (C only),
   output kept outside the repository.
 - Smoke run of the CLI against spike run 45054291170-1, output kept outside

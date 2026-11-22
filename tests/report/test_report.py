@@ -434,3 +434,101 @@ def test_cli_storage_section_without_prices(results, tmp_path):
     main([str(results), "run-1", "--out", str(out), "--no-prices"])
     sec = (out / "README.md").read_text().split("## Storage and backup cost of CDC")[1].split("\n## ")[0]
     assert "needs configurations B and C" in sec and "not priced: prices were not read" in sec
+
+
+# -- SUMMARY.md: plain-language summary --------------------------------------------------
+
+LADDER = [(100, 100, 0, 0), (200, 200, 0, 0), (300, 300, 0, 0), (400, 400, 0, 0)]
+BANNED = (r"\bdatabase [12]\b", r"\bconfigurations? [abc]\b", r"\bdb1\b", r"\bdb2\b", r"\brepeat\w*",
+          r"\bgoverned\b", r"\buplift\w*", r"\bjitter\b")
+
+
+def _summary(results, tmp_path, steps, *args, **kw):
+    write_run(results, "run-1", steps, **kw)
+    out = tmp_path / "out"
+    assert main([str(results), "run-1", "--out", str(out), *args]) == 0
+    readme, summary = (out / "README.md").read_text(), (out / "SUMMARY.md").read_text()
+    assert summary.isascii() and readme.isascii()
+    for pattern in BANNED:
+        assert not re.search(pattern, summary, re.IGNORECASE), pattern
+    assert "[SUMMARY.md](SUMMARY.md)" in readme.split("## Answer")[0]
+    for line in summary.splitlines():
+        if line.startswith("|"):
+            assert len(line.strip().strip("|").split("|")) <= 5, line
+    return readme, summary
+
+
+def _row(text: str, load: str) -> list[str]:
+    line = next(x for x in text.splitlines() if x.startswith(f"| {load} |"))
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _section(summary: str, heading: str) -> str:
+    return summary.split(f"### {heading}\n")[1].split("\n#")[0]
+
+
+HANDLED, P95, LOG, LOGRATE, CPU = ("Handled the load?", "Response time, 95th percentile (ms)",
+                                   "Log written per update (KB)", "Log write rate (% of the database's limit)",
+                                   "CPU used (% of the database's limit)")
+NEIGH, STORAGE = "Neighbouring database response time, 95th percentile (ms)", "Storage and cost"
+
+
+def test_summary_quick_run_with_overloaded_step(results, tmp_path):
+    steps = {"A": LADDER + [(500, 500, 0, 0)], "B": LADDER + [(500, 500, 0, 0)], "C": LADDER + [(500, 400, 12, 0)]}
+    readme, s = _summary(results, tmp_path, steps, "--prices-file", str(FIXTURES / "prices_storage_sample.json"),
+                         repeats=3, configs_by_repeat=QUICK, log_scale_by_repeat=SPREAD)
+    # Opening: every number from the run's data.
+    assert "elastic pool of 4 vCores, General Purpose, zone redundant, in Sweden Central" in s
+    assert "capped at 2 vCores" in s and "10.0 GiB of task data" in s and "steady 50 updates per second" in s
+    assert "4,096 characters" in s and "2 minutes after a 1-minute warm-up" in s
+    assert "3 rounds without CDC and 3 with CDC" in s
+    # "What this means" comes before the tables, in the order the owner asked for.
+    order = ["## What this means"] + [f"### {h}" for h in (HANDLED, P95, LOG, LOGRATE, CPU, NEIGH, STORAGE)]
+    assert [s.index(h) for h in order] == sorted(s.index(h) for h in order)
+    assert _row(_section(s, HANDLED), "100") == ["100", "yes", "yes", ""]
+    # Log per update: 9.0 KB without, 17.0 KB with; per-round differences 8.0, 8.16, 7.84 KB.
+    assert _row(_section(s, LOG), "100")[1:] == ["9.0", "17.0", "+8.0 [7.8 to 8.2]"]
+    # CPU and response time are the same with and without CDC, with no spread: within run-to-run variation.
+    assert _row(_section(s, CPU), "100")[3] == "within run-to-run variation"
+    assert _row(_section(s, P95), "100")[3] == "within run-to-run variation"
+    assert _row(_section(s, LOGRATE), "100")[1:] == ["10.0", "20.0", "+10.0 [10.0 to 10.0]"]
+    assert _row(_section(s, NEIGH), "100")[1:3] == ["8.00", "8.00"]
+    storage = _row(_section(s, STORAGE), "100")
+    assert storage[1] == "222.91"
+    # The overloaded load: full note once under the first table, short form on its row in every table.
+    handled = _section(s, HANDLED)
+    assert _row(handled, "500") == ["500", "yes", "no: 400.0 of 500 per second, 36 errors", "overloaded, see note"]
+    assert handled.count("overloaded: compares two overloaded systems, not the steady cost of CDC") == 1
+    for h in (P95, LOG, LOGRATE, CPU, NEIGH, STORAGE):
+        assert "| 500 (overloaded, see note) |" in _section(s, h), h
+    assert "At 400 updates per second, the highest load handled both without and with CDC" in s
+    assert "Without CDC, the database handled every load tested, up to 500 updates per second (run run-1)." in s
+    assert "With CDC, the database first stopped coping at 500 updates per second" in s
+    assert "about 222.9 GB" in s and "## How sure are we" in s and "Glossary:" in s
+    # Same functions as README.md: the change table and the monthly total agree.
+    assert "222.91" in readme.split("### Change-table storage")[1]
+    month = storage[2].split(" ")[0]
+    monthly = readme.split("### Monthly cost difference with CDC")[1]
+    assert month != "not" and _row(monthly, "100")[4] == month
+
+
+def test_summary_within_variation_and_not_priced(results, tmp_path):
+    # Log per update 9,000 without and 9,100 with, rounds 4% apart: the difference is within the variation.
+    _, s = _summary(results, tmp_path, {"B": [(100, 100, 0, 0)], "C": [(100, 100, 0, 0)]}, "--no-prices",
+                    repeats=3, log_bytes_per_txn={"B": 9000, "C": 9100}, log_scale_by_repeat=SPREAD)
+    assert _row(_section(s, LOG), "100")[3] == "within run-to-run variation"
+    assert _row(_section(s, STORAGE), "100")[2] == "not priced (prices were not read)"
+    assert "not priced, because prices were not read" in s
+    assert "overloaded" not in s
+
+
+def test_summary_missing_figures_say_not_measured(results, tmp_path):
+    _, s = _summary(results, tmp_path, {"C": [(200, 200, 0, 0)]}, "--no-prices")
+    assert _row(_section(s, HANDLED), "200")[1:3] == ["not measured", "yes"]
+    assert _row(_section(s, LOG), "200")[1] == "not measured" and _row(_section(s, LOG), "200")[3] == "not measured"
+    assert _row(_section(s, NEIGH), "200")[1] == "not measured"
+    assert _row(_section(s, STORAGE), "200")[2] == "not measured"
+    assert "- Without CDC: not measured (run run-1)." in s
+    assert "Change-table storage at 100 updates per second: not measured (run run-1)." in s
+    assert "Added cost of CDC: not measured" in s
+    assert "with CDC only (this run did not test the application without CDC)" in s

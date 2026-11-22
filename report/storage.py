@@ -164,12 +164,7 @@ def log_diffs(metrics: list[A.StepMetrics]) -> list[LogDiff]:
                                "not compared: a configuration did not carry the load"))
             continue
         vc, vb = A.config_value(mc, unit_fn), A.config_value(mb, unit_fn)
-        per = {}
-        for r in shared:
-            c = [unit_fn(m)[0] for m in mc if m.step.repeat == r]
-            b = [unit_fn(m)[0] for m in mb if m.step.repeat == r]
-            if c and b and not (math.isnan(c[0]) or math.isnan(b[0])):
-                per[r] = c[0] - b[0]
+        per = A.paired_diffs(mc, mb, unit_fn, shared)
         missing = [r for r in shared if r not in per]
         note = f"no value in repeat {', '.join(map(str, missing))} (counter reset or missing polls)" if missing else ""
         out.append(LogDiff(t, vb, vc, A.uplift(vc, vb), list(per.values()), sorted(per), note))

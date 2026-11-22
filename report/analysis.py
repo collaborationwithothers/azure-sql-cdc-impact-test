@@ -193,19 +193,20 @@ def db2_windows(run: Run) -> pd.DataFrame:
             continue
         rows.append({"start": a, "end": b, "target": num(res.get("target_rate")), "achieved": num(r.get("achieved_rate")),
                      "errors": num(res.get("errors")), "shed": num(res.get("shed")), "p50_ms": num(lat.get("p50_ms")),
-                     "p99_ms": num(lat.get("p99_ms")), "client_cpu_percent": num(res.get("client_cpu_percent"))})
+                     "p95_ms": num(lat.get("p95_ms")), "p99_ms": num(lat.get("p99_ms")),
+                     "client_cpu_percent": num(res.get("client_cpu_percent"))})
     return pd.DataFrame(rows)
 
 
 def neighbour_in(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> dict:
-    """Database 2 windows that lie wholly inside [start, end]: mean rate, mean of window p50 and p99, error sum."""
+    """Database 2 windows that lie wholly inside [start, end]: mean rate, mean of window p50, p95 and p99, error sum."""
     if df.empty:
         return {"n": 0}
     w = df[(df["start"] >= start - W.TOLERANCE) & (df["end"] <= end + W.TOLERANCE)]
     if w.empty:
         return {"n": 0}
     return {"n": len(w), "achieved": float(w["achieved"].mean()), "target": float(w["target"].mean()),
-            "p50_ms": float(w["p50_ms"].mean()), "p99_ms": float(w["p99_ms"].mean()),
+            "p50_ms": float(w["p50_ms"].mean()), "p95_ms": float(w["p95_ms"].mean()), "p99_ms": float(w["p99_ms"].mean()),
             "p99_max_ms": float(w["p99_ms"].max()), "errors_shed": float((w["errors"] + w["shed"]).sum())}
 
 
@@ -321,6 +322,17 @@ def repeats_note(shared: list[int], all_repeats: list[int]) -> str:
     if shared == all_repeats or not shared:
         return ""
     return "repeat " + ", ".join(str(r) for r in shared) + " only (the other configuration ran in no other repeat)"
+
+
+def paired_diffs(mx: list[StepMetrics], my: list[StepMetrics], fn, shared: list[int]) -> dict[int, float]:
+    """{repeat: x minus y within that repeat}, for each shared repeat where both have a value."""
+    out = {}
+    for r in shared:
+        x = [fn(m)[0] for m in mx if m.step.repeat == r]
+        y = [fn(m)[0] for m in my if m.step.repeat == r]
+        if x and y and not (math.isnan(x[0]) or math.isnan(y[0])):
+            out[r] = x[0] - y[0]
+    return out
 
 
 def uplift_rows(metrics: list[StepMetrics]) -> list[dict]:
