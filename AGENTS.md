@@ -29,9 +29,35 @@ Everything here is public and carries the owner's name.
 
 ## Current state
 
-Nothing is built. The repo holds the design, this file, and agent
-configuration. There is no Terraform, no code, no workflow and no Azure
-resource. Update this section whenever that changes.
+Update this section whenever the state changes. It is the progress record a
+new or summarised session works from.
+
+Last updated: 2026-11-22.
+
+- Build order step 1 is in progress on branch `agent/foundation` (not yet
+  merged): persistent layer Terraform in `infra/persistent/`, verification
+  records in `docs/verification/`.
+- No Azure resource exists yet. The persistent layer has not been applied.
+- No workflow, no application code.
+- Setup checks done on 2026-11-22: remote correct, active GitHub account has
+  admin on the repo, the `azure` environment exists with a `main`-only branch
+  policy, the signed-in Azure identity holds Owner on the subscription, the only
+  Azure Policy assignment is the Defender for Cloud default initiative.
+- Local Docker is not working on the owner's machine (daemon returns HTTP 500).
+  Container tests run in CI only until that is fixed.
+
+Next steps, in order:
+1. Finish PR 1: validate workflow with secret scan, persistent Terraform,
+   `docs/bootstrap.md`, AGENTS.md note that environment secrets need repo admin.
+2. Bootstrap: plan, apply, migrate state, set `azure` environment secrets.
+3. Spike (design section 12) through a pipeline workflow.
+4. Build order steps 3 to 7.
+
+Findings that change the plan:
+- A pooled database capped at 2 vCores probably has a log rate limit near
+  9 MiB/s, below the pool's 24 MiB/s (inference, see
+  `docs/verification/2026-11-22-azure-sql.md`). The per-database cap may bind
+  first. That feeds decision D4 for the confirming run.
 
 ## Autonomy model
 
