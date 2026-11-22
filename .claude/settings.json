@@ -1,0 +1,26 @@
+{
+  "attribution": {
+    "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(terraform:*)",
+      "Bash(dotnet:*)",
+      "Bash(docker:*)",
+      "Bash(python3:*)",
+      "Bash(az:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(az group delete:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.tfstate)",
+      "Read(./**/*.tfvars)"
+    ]
+  }
+}
