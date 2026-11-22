@@ -44,6 +44,15 @@ jobs:
         # tracked file fails the build unless the line is marked allow-guid.
         run: scripts/check-identifiers.sh
 
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+
   terraform:
     runs-on: ubuntu-latest
     strategy:

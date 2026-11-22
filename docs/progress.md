@@ -15,8 +15,8 @@ Rules for this file:
 
 | # | Step | Status |
 | --- | --- | --- |
-| 1 | Repo, `validate` workflow, persistent Terraform, bootstrap instructions | In progress, branch `agent/foundation` |
-| 1b | Bootstrap apply of the persistent layer, environment secrets | Not started |
+| 1 | Repo, `validate` workflow, persistent Terraform, bootstrap instructions | Done, PR #1 |
+| 1b | Bootstrap apply of the persistent layer, environment secrets | Done 2026-11-22 (decision 0006). OIDC sign-in proof via `destroy` workflow pending |
 | 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | Not started |
 | 3 | Load generator, collector, orchestrator, smoke mode | Not started |
 | 4 | `run-test`, `sweep`, `destroy`. Prove destroy on success, failure, timeout | Not started |
@@ -39,7 +39,7 @@ Rules for this file:
 - [x] `docs/bootstrap.md` and `scripts/bootstrap.sh`.
 - [x] AGENTS.md Bootstrap section: environment secrets need repo admin.
 - [x] Decision records 0002 to 0005.
-- [ ] PR opened, CI green, merged.
+- [x] PR opened, CI green, merged (#1).
 
 ## Open questions carried forward
 
