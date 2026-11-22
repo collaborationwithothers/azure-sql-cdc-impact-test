@@ -6,6 +6,7 @@ Status: approved by the owner on 2026-11-22. Build in progress; see `docs/progre
 - No virtual network and no private endpoint. SQL public endpoint with Entra-only sign-in (decision 0008). Section 5's networking bullets are superseded.
 - .NET holds application logic only: the load generator. Orchestrator and collector are Python; Debezium runs in its own container in the same job, controlled through marker files (decision 0010). Resolves D6.
 - Application Insights in the persistent layer, with full per-request tracing (decision 0011). Diagnostic settings on every resource (decision 0012).
+- The Container Apps environment is persistent, with the D8 profile at zero nodes between runs; the job stays per run. Budget 100 per month. Remove the environment after the confirming run (decision 0013, spike item 7).
 
 ## 1. What this answers
 

@@ -118,6 +118,30 @@ resource "azurerm_container_registry" "this" {
 }
 
 # ---------------------------------------------------------------------------
+# Container Apps environment for the test-rig job (decision 0013). Persistent
+# because creating one took 5m50s and deleting one longer still (spike run
+# 45049809770). The dedicated profile scales to zero nodes between runs, but
+# the Dedicated plan management fee is charged while the profile exists. Remove
+# this block after the confirming run. No virtual network (decision 0008).
+# ---------------------------------------------------------------------------
+
+resource "azurerm_container_app_environment" "this" {
+  name                = "cae-cdc-impact-${local.suffix}"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  logs_destination    = "azure-monitor"
+
+  workload_profile {
+    name                  = "rig"
+    workload_profile_type = var.workload_profile_type
+    minimum_count         = 0
+    maximum_count         = 1
+  }
+
+  tags = merge(local.tags, { purpose = "rig-environment" })
+}
+
+# ---------------------------------------------------------------------------
 # Identities.
 # ---------------------------------------------------------------------------
 
@@ -292,5 +316,6 @@ module "diagnostics" {
     blob_service    = "${azurerm_storage_account.this.id}/blobServices/default"
     log_analytics   = azurerm_log_analytics_workspace.this.id
     registry        = azurerm_container_registry.this.id
+    environment     = azurerm_container_app_environment.this.id
   }
 }

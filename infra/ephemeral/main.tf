@@ -38,6 +38,12 @@ data "azurerm_container_registry" "this" {
   resource_group_name = var.resource_group_name
 }
 
+# Persistent since decision 0013: environment creation dominated run time.
+data "azurerm_container_app_environment" "this" {
+  name                = var.container_app_environment_name
+  resource_group_name = var.resource_group_name
+}
+
 data "azurerm_application_insights" "this" {
   name                = var.application_insights_name
   resource_group_name = var.resource_group_name
@@ -142,27 +148,11 @@ resource "azurerm_eventhub" "outbox" {
 }
 
 # ---------------------------------------------------------------------------
-# Container Apps: environment with one dedicated workload profile, and the
-# test-rig job with two containers (decision 0010). Retries are zero: an
+# Container Apps: the test-rig job with two containers (decision 0010), in
+# the persistent environment's dedicated profile (decision 0013). Retries are zero: an
 # interrupted benchmark is failed, not retried (design section 5).
-# Logs go through the environment's diagnostic setting (decision 0012).
+# Logs go through the environment's diagnostic setting, in the persistent layer.
 # ---------------------------------------------------------------------------
-
-resource "azurerm_container_app_environment" "this" {
-  name                = "cae-cdc-impact-${local.suffix}"
-  resource_group_name = data.azurerm_resource_group.this.name
-  location            = data.azurerm_resource_group.this.location
-  logs_destination    = "azure-monitor"
-
-  workload_profile {
-    name                  = "rig"
-    workload_profile_type = var.workload_profile_type
-    minimum_count         = 1
-    maximum_count         = 1
-  }
-
-  tags = local.tags
-}
 
 locals {
   shared_env = {
@@ -182,7 +172,7 @@ resource "azurerm_container_app_job" "rig" {
   name                         = "job-cdc-impact-rig"
   resource_group_name          = data.azurerm_resource_group.this.name
   location                     = data.azurerm_resource_group.this.location
-  container_app_environment_id = azurerm_container_app_environment.this.id
+  container_app_environment_id = data.azurerm_container_app_environment.this.id
   workload_profile_name        = "rig"
   replica_timeout_in_seconds   = var.replica_timeout_seconds
   replica_retry_limit          = 0
@@ -262,11 +252,10 @@ module "diagnostics" {
   source                     = "../modules/diagnostics"
   log_analytics_workspace_id = data.azurerm_log_analytics_workspace.this.id
   targets = {
-    pool        = azurerm_mssql_elasticpool.this.id
-    cdcdb1      = azurerm_mssql_database.db["cdcdb1"].id
-    cdcdb2      = azurerm_mssql_database.db["cdcdb2"].id
-    master      = "${azurerm_mssql_server.this.id}/databases/master"
-    eventhubs   = azurerm_eventhub_namespace.this.id
-    environment = azurerm_container_app_environment.this.id
+    pool      = azurerm_mssql_elasticpool.this.id
+    cdcdb1    = azurerm_mssql_database.db["cdcdb1"].id
+    cdcdb2    = azurerm_mssql_database.db["cdcdb2"].id
+    master    = "${azurerm_mssql_server.this.id}/databases/master"
+    eventhubs = azurerm_eventhub_namespace.this.id
   }
 }

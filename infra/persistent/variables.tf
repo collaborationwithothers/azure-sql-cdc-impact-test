@@ -24,7 +24,13 @@ variable "github_environment" {
 variable "monthly_budget" {
   description = "Monthly budget for the resource group, in the subscription's billing currency."
   type        = number
-  default     = 50
+  default     = 100
+}
+
+variable "workload_profile_type" {
+  description = "Dedicated profile for the test rig. D8 is 8 vCPU and 32 GiB per node (observed 2026-11-22)."
+  type        = string
+  default     = "D8"
 }
 
 variable "budget_start_date" {

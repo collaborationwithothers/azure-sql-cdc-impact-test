@@ -80,10 +80,10 @@ variable "eventhubs_max_throughput_units" {
   default = 20
 }
 
-variable "workload_profile_type" {
-  description = "Dedicated profile. D8 is 8 vCPU and 32 GiB per node in Sweden Central (observed 2026-11-22)."
+variable "container_app_environment_name" {
+  description = "Persistent Container Apps environment, found by its purpose tag."
   type        = string
-  default     = "D8"
+  default     = ""
 }
 
 # The two containers share one D8 node. The platform reserves part of the
