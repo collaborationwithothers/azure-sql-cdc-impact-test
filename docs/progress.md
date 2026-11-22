@@ -88,7 +88,9 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [ ] Event Hubs delivery: the export step now reads `IncomingMessages` from
       Azure Monitor before destroy. Proof due in the next run that sends events.
 - [ ] Debezium telemetry missing from Application Insights (decision 0014).
-- [ ] Destroy on failure (inject=fail) and on timeout (inject=timeout).
+- [ ] Destroy on failure: run 45058781127 (inject=fail).
+- [ ] Destroy on timeout: waived for today's runs by the owner (decision 0015); run it afterwards.
+- [ ] Smoke, then quick (4 vCores), then confirm (6 vCores); remove the persistent environment after.
 
 ## Open questions carried forward
 
