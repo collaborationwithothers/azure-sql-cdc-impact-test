@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/loadgen/">
+    <Project Path="src/loadgen/LoadGen.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/containers/">
+    <Project Path="tests/containers/ContainerTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/UnitTests.csproj" />
+  </Folder>
+</Solution>

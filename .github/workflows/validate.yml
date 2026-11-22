@@ -79,3 +79,30 @@ jobs:
       - name: validate
         if: steps.exists.outputs.yes == 'true'
         run: terraform -chdir=infra/${{ matrix.layer }} validate
+
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Build
+        run: dotnet build CdcImpact.slnx -c Release
+      - name: Unit tests
+        run: dotnet test --project tests/unit/UnitTests.csproj -c Release
+      - name: Container tests (SQL Server in Docker)
+        run: dotnet test --project tests/containers/ContainerTests.csproj -c Release
+
+  rig-containers:
+    # Builds the rig and Debezium images, runs the Python tests against SQL
+    # Server, and checks the Debezium control protocol.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: tests/rig/run-container-tests.sh

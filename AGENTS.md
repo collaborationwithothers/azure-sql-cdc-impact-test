@@ -34,10 +34,13 @@ detailed task list and next steps live in `docs/progress.md`.
 
 Last updated: 2026-11-22.
 
-- Build order step 1 done. Persistent layer applied 2026-11-22 (decision 0006).
-  State in the `tfstate` container. `azure` environment secrets set.
-- Workflows: `validate`, `destroy`. No ephemeral layer, no application code.
-- Next: spike (design section 12). See `docs/progress.md`.
+- Build order step 1 done. Persistent layer applied (decisions 0006, 0011,
+  0012), including Application Insights and diagnostic settings.
+- Step 2 (spike) in progress on branch `agent/rig-v2`: load generator (.NET),
+  orchestrator and collector (Python), Debezium image, ephemeral Terraform,
+  `run-test` and `sweep` workflows. Not merged, nothing dispatched.
+- No ephemeral resource exists. No measurement exists.
+- Detail and next steps: `docs/progress.md`.
 
 ## Autonomy model
 
@@ -218,13 +221,15 @@ docs/bootstrap.md       One-time persistent layer setup
 scripts/                Bootstrap and repository checks
 infra/persistent/       Terraform for the persistent layer
 infra/ephemeral/        Terraform for the per-run layer
-src/loadgen/            .NET load generator
-src/collector/          Metrics collector
-src/orchestrator/       Walks the test matrix
-debezium/               Debezium Server configuration
+src/loadgen/            .NET load generator: the transaction and open-loop driver only (decision 0010)
+src/rig/                Python package cdcrig: orchestrator and collector (decision 0010)
+debezium/               Debezium image: token jar, control script, Java agent config
+infra/modules/          Shared Terraform modules (diagnostics)
 sql/                    Schema, seed and CDC scripts
 report/                 Python report and sizing generator
-tests/                  Unit and container tests
+tests/unit/             .NET unit tests
+tests/containers/       .NET container tests (load generator against SQL Server)
+tests/rig/              Python tests and the container test runner
 .github/workflows/      validate, run-test, sweep, destroy
 ```
 
@@ -243,5 +248,19 @@ and anything a new session would otherwise have to rediscover.
   `EXPECTED_SUBSCRIPTION_NAME` and `EXPECTED_SUBSCRIPTION_ID` set.
 - The pipeline finds persistent resources by their `purpose` tag in
   `rg-cdc-impact-test`. Generated names are never committed.
+- .NET: `dotnet build CdcImpact.slnx`; `dotnet test --project tests/unit/UnitTests.csproj`;
+  `dotnet test --project tests/containers/ContainerTests.csproj` (needs Docker).
+  .NET 10 uses Microsoft.Testing.Platform (`global.json` "test" runner).
+- Rig and Debezium images plus Python tests: `tests/rig/run-container-tests.sh`
+  (builds linux/amd64 images, starts SQL Server, runs pytest in the rig image,
+  then the Debezium control protocol test). On the owner's Mac, put
+  `/Applications/Docker.app/Contents/Resources/bin` on PATH first, or image
+  pulls fail on the credential helper.
+- `nuget.config` clears machine feeds: the owner's machine has a private feed.
+- Microsoft.Data.SqlClient rejects invariant globalization; it is off.
+- Persistent plan check: `scripts/plan_check.py` (also used by run-test).
+- Result files are scrubbed by `scripts/sanitize.py` before upload as artifacts.
+- Pushing a rebased branch needs a force-push, which auto mode blocks. Push to
+  a new branch name instead.
 - The repo uses GitHub's immutable OIDC subject format. The prefix comes from
   `gh api repos/collaborationwithothers/azure-sql-cdc-impact-test/actions/oidc/customization/sub`.

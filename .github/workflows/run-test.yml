@@ -1,0 +1,221 @@
+name: run-test
+
+# Applies the ephemeral layer, runs the test rig job, exports results, and
+# always destroys the ephemeral layer (design section 8). The destroy job runs
+# after success, failure, cancellation and timeout.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "spike, smoke, quick, confirm or targeted (design section 7)"
+        type: choice
+        options: [spike, smoke, quick, confirm, targeted]
+        default: spike
+      pool_vcores:
+        description: "Pool vCores (4, or 6 for the confirming run)"
+        type: string
+        default: "4"
+      per_database_max_vcores:
+        description: "Per-database vCore cap"
+        type: string
+        default: "2"
+      settings_json:
+        description: "Extra orchestrator settings as JSON, overriding the mode preset"
+        type: string
+        default: "{}"
+      inject:
+        description: "none, fail (rig fails after setup) or timeout (workflow job times out) to prove destroy"
+        type: choice
+        options: [none, fail, timeout]
+        default: none
+      timeout_minutes:
+        description: "Timeout for the run job, in minutes"
+        type: string
+        default: "240"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: run-test
+  cancel-in-progress: false
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: "true"
+  RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+  RG: rg-cdc-impact-test
+
+jobs:
+  preflight:
+    # Live runs are serialised: refuse to start if any ephemeral resource exists.
+    runs-on: ubuntu-latest
+    environment: azure
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: No other run exists
+        run: |
+          if [ "$(scripts/ephemeral.sh exists)" = "yes" ]; then
+            echo "Ephemeral resources already exist. Run destroy first."; exit 1
+          fi
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: azure
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/ephemeral.sh discover
+      - name: Build and push images
+        run: |
+          set -euo pipefail
+          az acr login -n "$TF_VAR_acr_name" >/dev/null
+          docker build -t "$ACR_LOGIN_SERVER/cdc-impact-rig:$RUN_ID" -f Dockerfile .
+          docker build -t "$ACR_LOGIN_SERVER/cdc-impact-debezium:$RUN_ID" -f debezium/Dockerfile .
+          docker push -q "$ACR_LOGIN_SERVER/cdc-impact-rig:$RUN_ID"
+          docker push -q "$ACR_LOGIN_SERVER/cdc-impact-debezium:$RUN_ID"
+
+  run:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: azure
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.6"
+          terraform_wrapper: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/ephemeral.sh discover
+      - name: Terraform variables
+        env:
+          MODE: ${{ inputs.mode }}
+          SETTINGS: ${{ inputs.settings_json }}
+          INJECT: ${{ inputs.inject }}
+          TIMEOUT: ${{ inputs.timeout_minutes }}
+          VCORES: ${{ inputs.pool_vcores }}
+          PERDB: ${{ inputs.per_database_max_vcores }}
+        run: |
+          set -euo pipefail
+          deadline=$(date -u -d "+$((TIMEOUT + 60)) minutes" +%Y-%m-%dT%H:%M:%SZ)
+          settings=$(python3 -c 'import json,os; s=json.loads(os.environ["SETTINGS"] or "{}"); s["mode"]=os.environ["MODE"]; s["injectFailure"]="fail" if os.environ["INJECT"]=="fail" else s.get("injectFailure","none"); print(json.dumps(s))')
+          {
+            echo "TF_VAR_run_id=$RUN_ID"
+            echo "TF_VAR_deadline=$deadline"
+            echo "TF_VAR_pool_vcores=$VCORES"
+            echo "TF_VAR_per_database_max_vcores=$PERDB"
+            echo "TF_VAR_rig_image=$ACR_LOGIN_SERVER/cdc-impact-rig:$RUN_ID"
+            echo "TF_VAR_debezium_image=$ACR_LOGIN_SERVER/cdc-impact-debezium:$RUN_ID"
+            echo "TF_VAR_rig_settings_json=$settings"
+          } >> "$GITHUB_ENV"
+          echo "run $RUN_ID, mode $MODE, $VCORES vCores, deadline $deadline"
+      - name: Terraform apply
+        run: |
+          set -euo pipefail
+          scripts/ephemeral.sh init
+          start=$(date +%s)
+          terraform -chdir=infra/ephemeral plan -input=false -lock-timeout=20m -out=run.tfplan
+          terraform -chdir=infra/ephemeral show -json run.tfplan | python3 scripts/plan_check.py "$RG"
+          terraform -chdir=infra/ephemeral apply -input=false -lock-timeout=20m run.tfplan
+          echo "APPLY_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+          echo "JOB_NAME=$(terraform -chdir=infra/ephemeral output -raw job_name)" >> "$GITHUB_ENV"
+      - name: Injected timeout
+        if: inputs.inject == 'timeout'
+        run: |
+          echo "Sleeping past the job timeout to prove that destroy runs after a timeout."
+          sleep $(( ${{ inputs.timeout_minutes }} * 60 + 600 ))
+      - name: Run the test rig job
+        run: |
+          set -euo pipefail
+          exec_name=$(az containerapp job start -n "$JOB_NAME" -g "$RG" --query name -o tsv)
+          echo "EXECUTION=$exec_name" >> "$GITHUB_ENV"
+          echo "execution started"
+          while true; do
+            status=$(az containerapp job execution show -n "$JOB_NAME" -g "$RG" --job-execution-name "$exec_name" --query properties.status -o tsv 2>/dev/null || echo Unknown)
+            case "$status" in
+              Succeeded) echo "job succeeded"; break ;;
+              Failed|Stopped|Degraded) echo "job ended: $status"; echo "JOB_FAILED=1" >> "$GITHUB_ENV"; break ;;
+            esac
+            sleep 30
+          done
+      - name: Export results
+        if: always() && env.JOB_NAME != ''
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          az storage blob download-batch --auth-mode login --account-name "$STATE_ACCOUNT" -s results -d results --pattern "$RUN_ID/*" -o none || true
+          server=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_mssql_server.this 2>/dev/null | awk -F'"' '/^ *name *=/ {print $2; exit}')
+          namespace=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_eventhub_namespace.this 2>/dev/null | awk -F'"' '/^ *name *=/ {print $2; exit}')
+          SANITIZE_VALUES="$server $namespace $STATE_ACCOUNT $TF_VAR_acr_name $TF_VAR_log_analytics_workspace_name $TF_VAR_application_insights_name $RIG_CLIENT_ID $ARM_TENANT_ID $ARM_SUBSCRIPTION_ID" \
+            python3 scripts/sanitize.py results
+          echo "apply_seconds=${APPLY_SECONDS:-}" > "results/$RUN_ID/pipeline.txt" 2>/dev/null || true
+          if [ -f "results/$RUN_ID/manifest.json" ]; then
+            python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print('status', m['status'], m.get('error') or ''); [print(('ok  ' if v['ok'] else 'FAIL'), k, v.get('detail') or '') for k,v in m['checks'].items()]" "results/$RUN_ID/manifest.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No manifest: the rig did not finish." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: results-${{ env.RUN_ID }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fail if the rig failed
+        if: env.JOB_FAILED == '1'
+        run: exit 1
+
+  destroy:
+    # Runs whatever happened above, including cancellation and timeout.
+    needs: [preflight, build, run]
+    if: always() && needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    environment: azure
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.6"
+          terraform_wrapper: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/ephemeral.sh discover
+      - name: Destroy
+        run: |
+          start=$(date +%s)
+          scripts/ephemeral.sh destroy
+          echo "destroy took $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: scripts/ephemeral.sh verify-clean

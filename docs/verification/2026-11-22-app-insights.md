@@ -55,3 +55,11 @@ https://github.com/microsoft/ApplicationInsights-Java/releases
 
 Learn recommends a newer "Microsoft OpenTelemetry Distro" for new apps. Not
 researched; this repo uses the verified Azure Monitor packages above.
+
+## Tested in this repo
+
+- 2026-11-22: `OpenTelemetry.Instrumentation.SqlClient` 1.21.0 emits client
+  spans with Microsoft.Data.SqlClient 7.1.2 (`tests/containers`, test
+  `Sql_client_instrumentation_emits_spans_with_this_sqlclient_version`, SQL
+  Server 2022 container). Closes the UNVERIFIABLE item above for this version
+  pair.

@@ -17,7 +17,7 @@ Rules for this file:
 | --- | --- | --- |
 | 1 | Repo, `validate` workflow, persistent Terraform, bootstrap instructions | Done, PR #1 |
 | 1b | Bootstrap apply of the persistent layer, environment secrets | Done 2026-11-22 (decision 0006). OIDC sign-in proof via `destroy` workflow pending |
-| 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | Not started |
+| 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | In progress, branch `agent/rig`. Restructuring to decision 0010 |
 | 3 | Load generator, collector, orchestrator, smoke mode | Not started |
 | 4 | `run-test`, `sweep`, `destroy`. Prove destroy on success, failure, timeout | Not started |
 | 5 | Report generator and sizing translation | Not started |
@@ -40,6 +40,30 @@ Rules for this file:
 - [x] AGENTS.md Bootstrap section: environment secrets need repo admin.
 - [x] Decision records 0002 to 0005.
 - [x] PR opened, CI green, merged (#1).
+
+## Step 2 status (2026-11-22)
+
+Owner decisions this step: 0008 (no VNet), 0010 (component split), 0011
+(Application Insights, full tracing), 0012 (diagnostics everywhere).
+
+Done (branch `agent/rig-v2`, superseding `agent/rig`):
+- [x] Persistent: Application Insights, telemetry role, diagnostic settings
+      (PR #4, applied). Plan check fixed: it had never run.
+- [x] .NET load generator CLI (`window`, `steady`) with OpenTelemetry. Unit 9/9,
+      container 6/6, including SQL tracing with SqlClient 7.1.2.
+- [x] Java token jar; self-test passes in the image build.
+- [x] Python `cdcrig`: settings, SQL, collector, Debezium control, orchestrator.
+- [x] Debezium image: control script, Java agent 3.7.10 (checksum pinned).
+- [x] Ephemeral Terraform: SQL, pool, Event Hubs, Container Apps environment and
+      two-container job, diagnostics. `validate` passes.
+- [x] Workflows `run-test`, `sweep`; sanitiser for results.
+- [x] Container tests (local, linux/amd64): Python 27/27; Debezium control
+      protocol 4/4. Bug found and fixed: CDC cleanup never deleted rows at the
+      current maximum LSN; a marker row now moves the mark past them.
+- [ ] PR, CI green, merge.
+- [ ] Retake resource group snapshot, dispatch `run-test` mode `spike`,
+      compare snapshot (decision 0008).
+- [ ] Record spike results per design section 12 items 1 to 8.
 
 ## Open questions carried forward
 

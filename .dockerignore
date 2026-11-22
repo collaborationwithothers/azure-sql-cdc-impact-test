@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.git/
+**/.terraform/
+docs/
+infra/
+report/
+tests/unit/
+tests/containers/
+**/__pycache__/
