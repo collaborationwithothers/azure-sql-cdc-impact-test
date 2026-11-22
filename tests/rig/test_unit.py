@@ -16,6 +16,8 @@ def test_quick_preset_matches_design_section_7():
     s = settings.resolve('{"mode":"quick"}')
     assert s.steps == [100, 200, 300, 400, 500]
     assert s.configurations == ["A", "B", "C"]
+    assert s.repeats == 3 and s.laterRepeatConfigurations == ["B", "C"] and s.phasesEveryRepeat is False
+
     assert (s.warmupSeconds, s.measureSeconds, s.seedGb, s.database2Rate, s.stopRatio) == (60, 120, 10, 50, 0.95)
     assert s.payloadType == "nvarchar(max)"
     s.validate()
@@ -121,3 +123,9 @@ def test_plan_check_rejects_other_group_and_deletes():
     assert _run_plan_check(delete, "--allow-delete").returncode == 0
     scope = _plan([{"address": "d", "type": "azurerm_role_assignment", "change": {"actions": ["create"], "after": {"scope": "/subscriptions/s/resourceGroups/other"}}}])
     assert _run_plan_check(scope).returncode == 1
+
+
+def test_later_repeat_configurations_must_be_a_subset():
+    import pytest
+    with pytest.raises(ValueError):
+        settings.resolve('{"mode":"smoke","configurations":["C"],"laterRepeatConfigurations":["B"]}').validate()

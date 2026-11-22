@@ -102,7 +102,9 @@ class Orchestrator:
                                        self.sink.dir / "db2_windows.jsonl", {"run_id": self.s.runId, "role": "neighbour"})
             try:
                 for repeat in range(1, self.s.repeats + 1):
-                    for configuration in self.s.configurations:
+                    configs = self.s.configurations if repeat == 1 or not self.s.laterRepeatConfigurations \
+                        else self.s.laterRepeatConfigurations
+                    for configuration in configs:
                         with tracer_span("configuration", run_id=self.s.runId, configuration=configuration, repeat=repeat):
                             self.run_configuration(configuration, repeat)
                         self.sink.upload()
@@ -235,9 +237,10 @@ class Orchestrator:
             if configuration == "C":
                 self._set("ladder_catchup", configuration, None, repeat)
                 self.wait_for_catchup("ladder")
-            if self.s.runPurge and configuration != "A":
+            phases = repeat == 1 or self.s.phasesEveryRepeat
+            if self.s.runPurge and phases and configuration != "A":
                 self.purge(configuration, repeat)
-            if self.s.runCleanup and configuration == "C":
+            if self.s.runCleanup and phases and configuration == "C":
                 self.cdc_cleanup(repeat)
         finally:
             if started_debezium:

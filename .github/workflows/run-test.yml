@@ -129,6 +129,7 @@ jobs:
           {
             echo "TF_VAR_run_id=$RUN_ID"
             echo "TF_VAR_deadline=$deadline"
+            echo "TF_VAR_replica_timeout_seconds=$((TIMEOUT * 60))"
             echo "TF_VAR_pool_vcores=$VCORES"
             echo "TF_VAR_per_database_max_vcores=$PERDB"
             echo "TF_VAR_rig_image=$ACR_LOGIN_SERVER/cdc-impact-rig:$RUN_ID"

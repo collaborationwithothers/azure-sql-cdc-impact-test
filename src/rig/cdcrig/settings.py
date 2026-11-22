@@ -10,8 +10,9 @@ PRESETS: dict[str, dict] = {
     "spike": {"configurations": ["C"], "steps": [100], "warmupSeconds": 30, "measureSeconds": 60, "seedGb": 0.25, "purgeMinRows": 20000},
     # Smoke: one configuration, two steps, about 10 minutes.
     "smoke": {"configurations": ["C"], "steps": [100, 200], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 0.5, "purgeMinRows": 50000},
-    # Quick run: 100 to 500 tps, the owner's realistic range (decision 0017).
-    "quick": {"configurations": ["A", "B", "C"], "steps": [100, 200, 300, 400, 500], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
+    # Quick run: 100 to 500 tps (decision 0017). A once; B and C three times,
+    # blocked by repeat, so the CDC uplift (C minus B) has a spread (decision 0018).
+    "quick": {"configurations": ["A", "B", "C"], "steps": [100, 200, 300, 400, 500], "repeats": 3, "laterRepeatConfigurations": ["B", "C"], "phasesEveryRepeat": False, "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
     # Confirming run: configuration C at the same steps (decision 0017).
     "confirm": {"configurations": ["C"], "steps": [100, 200, 300, 400, 500], "warmupSeconds": 60, "measureSeconds": 120, "seedGb": 10},
     "targeted": {},
@@ -42,6 +43,10 @@ class Settings:
     configurations: list[str] = field(default_factory=lambda: ["A", "B", "C"])
     steps: list[int] = field(default_factory=lambda: [100, 200, 400, 800, 1200, 1600])
     repeats: int = 1
+    # Configurations for repeats 2 and later; empty means the same as repeat 1.
+    laterRepeatConfigurations: list[str] = field(default_factory=list)
+    # False: purge and CDC cleanup are measured in repeat 1 only.
+    phasesEveryRepeat: bool = True
     warmupSeconds: int = 60
     measureSeconds: int = 120
     stopRatio: float = 0.95
@@ -70,6 +75,10 @@ class Settings:
             raise ValueError("payloadType")
         if not self.configurations or any(c not in ("A", "B", "C") for c in self.configurations):
             raise ValueError("configurations must be A, B or C")
+        if any(c not in self.configurations for c in self.laterRepeatConfigurations):
+            raise ValueError("laterRepeatConfigurations must be a subset of configurations")
+        if self.repeats < 1:
+            raise ValueError("repeats")
         if not 0 < self.stopRatio <= 1:
             raise ValueError("stopRatio")
         if self.injectFailure not in ("none", "fail"):

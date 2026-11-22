@@ -100,6 +100,7 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
       with the change table before capture had copied every commit. Fixed with
       a marker row (PR: catch-up marker). Spike catch-up times are not valid.
 - [x] Load steps 100 to 500 tps for quick and confirm (owner, decision 0017).
+- [x] Owner: three repeats of B and C, A once; 6 vCore run dropped for today (decision 0018).
 - [ ] Smoke, then quick (4 vCores), then confirm (6 vCores); remove the persistent environment after.
 
 ## Open questions carried forward
