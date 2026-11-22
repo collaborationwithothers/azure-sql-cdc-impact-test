@@ -169,6 +169,16 @@ created once.
 - State for the persistent layer moves to the state storage account as soon as
   that account exists.
 - Record the date and outcome in `docs/decisions/`, without identifiers.
+- Writing the `azure` environment secrets (`AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) needs admin on the repository.
+  GitHub's docs say configuring an environment in an organization repository
+  needs admin access; the REST page for secrets says only "collaborator
+  access", so the exact level is not documented and admin is treated as
+  required (`docs/verification/2026-11-22-platform.md`, checked 2026-11-22).
+  `haripraghash` has admin. `haripraghash-bot` has write only. A session
+  without admin does every other step, then stops and names the secrets to set,
+  never their values.
+- Steps and commands: `docs/bootstrap.md`, script `scripts/bootstrap.sh`.
 
 ## Working method
 
@@ -201,6 +211,10 @@ Planned. Create directories as they are needed, and keep this list accurate.
 ```
 docs/design.md          The specification
 docs/decisions/         Numbered decision records
+docs/verification/      Claims checked against current documentation
+docs/progress.md        Task list and status
+docs/bootstrap.md       One-time persistent layer setup
+scripts/                Bootstrap and repository checks
 infra/persistent/       Terraform for the persistent layer
 infra/ephemeral/        Terraform for the per-run layer
 src/loadgen/            .NET load generator
@@ -218,4 +232,15 @@ tests/                  Unit and container tests
 Append below as the codebase takes shape: exact build, test and run commands,
 and anything a new session would otherwise have to rediscover.
 
-- No commands exist yet.
+- Progress and next steps: `docs/progress.md`. Verified facts:
+  `docs/verification/`.
+- Terraform: `terraform -chdir=infra/<layer> fmt -check -recursive`, then
+  `init -backend=false` and `validate`. azurerm provider `~> 5.14`.
+- Secret scan locally: `gitleaks git --redact --config .gitleaks.toml .` and
+  `scripts/check-identifiers.sh` (fails on any GUID in a tracked file).
+- Bootstrap: `scripts/bootstrap.sh plan|apply|migrate|secrets` with
+  `EXPECTED_SUBSCRIPTION_NAME` and `EXPECTED_SUBSCRIPTION_ID` set.
+- The pipeline finds persistent resources by their `purpose` tag in
+  `rg-cdc-impact-test`. Generated names are never committed.
+- The repo uses GitHub's immutable OIDC subject format. The prefix comes from
+  `gh api repos/collaborationwithothers/azure-sql-cdc-impact-test/actions/oidc/customization/sub`.

@@ -30,22 +30,27 @@ Rules for this file:
       Owner, policy assignments, quotas). 2026-11-22.
 - [x] Verification of Azure SQL claims: `docs/verification/2026-11-22-azure-sql.md`.
 - [x] Verification of platform claims: `docs/verification/2026-11-22-platform.md`.
-- [ ] Verification of Debezium, mssql-jdbc, Terraform provider and action pins.
+- [x] Verification of Debezium, mssql-jdbc, Terraform provider and action pins:
+      `docs/verification/2026-11-22-debezium-terraform.md`.
 - [x] Persistent Terraform drafted (`infra/persistent/`).
-- [ ] Pin provider versions, `terraform fmt` and `validate`.
-- [ ] `validate` workflow with secret scan (compensating control for disabled
+- [x] Pin provider versions, `terraform fmt` and `validate`.
+- [x] `validate` workflow with secret scan (compensating control for disabled
       push protection).
-- [ ] `docs/bootstrap.md` and `scripts/bootstrap.sh`.
-- [ ] AGENTS.md Bootstrap section: environment secrets need repo admin.
-- [ ] Decision records 0002 onward.
+- [x] `docs/bootstrap.md` and `scripts/bootstrap.sh`.
+- [x] AGENTS.md Bootstrap section: environment secrets need repo admin.
+- [x] Decision records 0002 to 0005.
 - [ ] PR opened, CI green, merged.
 
 ## Open questions carried forward
 
-- Debezium to Event Hubs without a key: the Event Hubs sink may accept only a
-  connection string, which would be stop condition 2. Candidate keyless route:
-  Kafka sink to the Event Hubs Kafka endpoint with OAUTHBEARER and Microsoft's
-  managed identity callback sample. Pending verification.
+- Debezium to Event Hubs without a key: the Event Hubs sink accepts only a
+  connection string (verified), which would be stop condition 2. Plan: Kafka
+  sink to the Event Hubs Kafka endpoint with SASL OAUTHBEARER and a small Java
+  callback handler using `azure-identity` ManagedIdentityCredential. Spike item.
+- Debezium Server image lacks `azure-identity` for JDBC managed identity. A
+  derived image adds the jars. Spike item 1.
+- Debezium's SQL Server Agent status check on Azure SQL Database is
+  undocumented. Spike item.
 - OIDC subject: the repo uses GitHub's immutable subject format. The
   environment form of the subject is assumed, confirmed at first sign-in.
 - Local Docker daemon on the owner's machine returns HTTP 500. Container tests

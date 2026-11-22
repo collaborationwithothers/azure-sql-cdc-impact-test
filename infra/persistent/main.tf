@@ -113,11 +113,11 @@ resource "azurerm_user_assigned_identity" "pipeline" {
 }
 
 resource "azurerm_federated_identity_credential" "github_azure_environment" {
-  name      = "github-azure-environment"
-  parent_id = azurerm_user_assigned_identity.pipeline.id
-  audience  = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${var.github_subject_prefix}:environment:${var.github_environment}"
+  name                      = "github-azure-environment"
+  user_assigned_identity_id = azurerm_user_assigned_identity.pipeline.id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = "https://token.actions.githubusercontent.com"
+  subject                   = "${var.github_subject_prefix}:environment:${var.github_environment}"
 }
 
 # Test-rig identity. The Container Apps job runs as this identity. It is also

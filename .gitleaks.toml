@@ -1,0 +1,4 @@
+# gitleaks configuration. Uses the default rule set, which covers Azure
+# storage keys, connection strings, SAS tokens and Entra client secrets.
+[extend]
+useDefault = true
