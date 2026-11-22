@@ -43,12 +43,24 @@ def _log_kb(m: A.StepMetrics):
     return v / 1000, [x / 1000 for x in samples]
 
 
+POOL_LOG = "Pool log write rate (% of the pool's limit)"
+POOL_WAIT = "Time held back by the pool's log write limit (ms per second)"
+
+
+def _pool_pct(m: A.StepMetrics, col: str):
+    st = m.pool.get(col)
+    return (st.mean, st.samples) if st else (math.nan, [])
+
+
 # (column name, function(StepMetrics) -> (value, within-window samples), decimals)
 COMPARED = (
     ("Log written per update (KB)", _log_kb, 1),
     ("CPU used (% of the database's limit)", lambda m: A._pct(m, "avg_cpu_percent"), 1),
     ("Log write rate (% of the database's limit)", lambda m: A._pct(m, "avg_log_write_percent"), 1),
     ("Response time, 95th percentile (ms)", lambda m: (m.step.p95_ms, []), 2),
+    ("Data read and write (IO) used (% of the database's limit)", lambda m: A._pct(m, "avg_data_io_percent"), 1),
+    (POOL_LOG, lambda m: _pool_pct(m, "avg_log_write_percent"), 1),
+    (POOL_WAIT, lambda m: (m.pool_waits.get("POOL_LOG_RATE_GOVERNOR", math.nan), []), 0),
 )
 NEIGHBOUR = ("Neighbouring database response time, 95th percentile (ms)",
              lambda m: (m.neighbour.get("p95_ms", math.nan), []), 2)
@@ -56,7 +68,9 @@ _BY_NAME = {c[0]: c for c in COMPARED + (NEIGHBOUR,)}
 # Table order for the reader: what users feel first, then the causes, then the neighbour.
 METRIC_ORDER = tuple(_BY_NAME[n] for n in (
     "Response time, 95th percentile (ms)", "Log written per update (KB)",
-    "Log write rate (% of the database's limit)", "CPU used (% of the database's limit)", NEIGHBOUR[0]))
+    "Log write rate (% of the database's limit)", POOL_LOG, POOL_WAIT,
+    "Data read and write (IO) used (% of the database's limit)", "CPU used (% of the database's limit)",
+    NEIGHBOUR[0]))
 OVERLOADED_SHORT = "overloaded, see note"
 EXPLAIN = {
     "handled": ("Whether the application database kept up with the requested updates per second: at least 95% of "
@@ -70,6 +84,17 @@ EXPLAIN = {
     "Log write rate (% of the database's limit)": (
         "How close the application database is to its cap on log writing speed; near 100% the database holds "
         "updates back until the log catches up, so they slow down."),
+    POOL_LOG: (
+        "How close the whole pool is to its shared cap on log writing speed. CDC's own copying into the change table "
+        "runs as an internal SQL process, so its log writes count here, at pool level, and not in the database's "
+        "own log write rate above."),
+    POOL_WAIT: (
+        "For each second of the measured window, how many milliseconds of waiting, summed over all waiting tasks in "
+        "the pool, were spent held back by the pool's log write limit (wait type POOL_LOG_RATE_GOVERNOR). 0 means "
+        "the limit never held anything back. Several tasks can wait at once, so the figure can exceed 1,000."),
+    "Data read and write (IO) used (% of the database's limit)": (
+        "How close the application database is to its cap on reading and writing data pages; near 100% updates wait "
+        "for the disk."),
     "CPU used (% of the database's limit)": (
         "How much of the application database's processing allowance (its vCore cap) the updates used; near 100% "
         "the database cannot work any faster."),
@@ -267,7 +292,7 @@ class Summary:
                     quiet.append(f"{label} {cell}")
                     continue
                 unit = name.split(" (")[1].rstrip(")")
-                unit = "percentage points of the database's limit" if unit.startswith("%") else unit
+                unit = ("percentage points" + unit[1:]) if unit.startswith("%") else unit
                 pct = f", {'+' if u.percent >= 0 else ''}{f(u.percent, 0)}%" if not math.isnan(u.percent) else ""
                 shown.append(f"{label} {cell.split(' [')[0]} {unit}{pct}")
             text = (f"- At {t:,} updates per second, the highest load handled both without and with CDC, CDC added: "
@@ -290,6 +315,10 @@ class Summary:
             if reached:
                 b = max(reached, key=lambda x: x.percent)
                 why = f"{limit_name(b)} was hit ({f(b.percent, 0)}% of it on average)"
+                below = [t for t in loads if t < bad[0]]
+                if b.limit == "workers" and below:
+                    why += ("; worker threads pile up when updates are already waiting on something else. "
+                            + self.closest(by[(side, below[-1])], below[-1]))
             else:
                 why = (f"no measured limit reached {A.THRESHOLD:g}% of its value, so the cause lies outside the "
                        "database's measured limits (for example the load generator, connections or CDC's copying)")
@@ -306,6 +335,20 @@ class Summary:
         out.append(self.cost_bullet(rid, best))
         return out
 
+    @staticmethod
+    def closest(group: list[A.StepMetrics], t: int) -> str:
+        """The resource nearest its limit at a load that was handled, from the evidence text of each round."""
+        ev = [m.binding.evidence for m in group if m.binding.evidence.startswith("highest ")]
+        named = [(m.binding.percent, m.binding.label) for m in group if m.binding.reached]
+        named += [(float(e.split("%")[0].rsplit(" ", 1)[1]), e[len("highest "):].split("%")[0].rsplit(" ", 1)[0])
+                  for e in ev]
+        if not named:
+            return ""
+        pct, label = max(named)
+        scope, _, limit = label.partition(" ") if not label.startswith("database 1") else ("database 1", "", label[11:])
+        return (f"At {t:,} updates per second the resource closest to its limit was "
+                f"{SCOPE_NAMES.get(scope, 'the')} {LIMIT_NAMES.get(limit, limit)} ({f(pct, 0)}% in the busiest round)")
+
     def cost_bullet(self, rid, best) -> str:
         if best is None:
             return f"- Monthly cost difference: not measured (run {rid})."
@@ -316,12 +359,16 @@ class Summary:
         if math.isnan(total):
             return (f"- Monthly cost difference at {t:,} updates per second: not available, because a part of it "
                     f"could not be worked out (see the technical appendix, README.md) (run {rid}).")
-        _, label = self.r.compute_diff.get(t, (math.nan, ""))
+        comp, label = self.r.compute_diff.get(t, (math.nan, ""))
+        cur = self.r.currency or "USD"
         sizes = ("the pool sizes were measured" if label == "measured sizes" else
                  "at least one pool size is extrapolated from documented limits")
-        return (f"- With CDC, running {t:,} updates per second all day, every day would cost about {f(total, 2)} "
-                f"{self.r.currency or 'USD'} a month more (estimate: the list-price difference between the smallest pool "
-                f"that handles each, where {sizes}, plus backup storage for the extra log at its upper bound) (run {rid}).")
+        compute = ("no extra compute, because the same pool size handles both" if comp == 0 else
+                   f"{f(comp, 2)} {cur} of compute, the list-price difference between the smallest pool that handles each")
+        return (f"- With CDC, running {t:,} updates per second all day, every day would add at most about {f(total, 2)} "
+                f"{cur} a month (estimate, upper bound; {sizes}): {compute}, plus {f(total - comp, 2)} {cur} of backup "
+                f"storage for the extra log, which is 0 if the pool's backups stay inside the free allowance. "
+                f"Not included: data storage for the change table (run {rid}).")
 
     def certainty(self, run, best) -> list[str]:
         rounds = sorted({m.step.repeat for m in self.r.run_metrics(run.run_id) if m.step.configuration in (WITHOUT, WITH)})
