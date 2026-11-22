@@ -1,8 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The application logic: the task update plus outbox transaction and the
+       open-loop driver that stands in for the API (decision 0010). -->
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <RootNamespace>CdcImpact.LoadGen</RootNamespace>
+    <AssemblyName>loadgen</AssemblyName>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../common/Common.csproj" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Data.SqlClient.Extensions.Azure" />
   </ItemGroup>
 </Project>

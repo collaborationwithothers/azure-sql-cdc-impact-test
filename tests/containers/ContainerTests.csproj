@@ -9,6 +9,6 @@
     <PackageReference Include="Testcontainers.MsSql" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/orchestrator/Orchestrator.csproj" />
+    <ProjectReference Include="../../src/loadgen/LoadGen.csproj" />
   </ItemGroup>
 </Project>

@@ -1,39 +1,45 @@
 using System.Data;
 using System.Text;
-using CdcImpact.Common;
 using Microsoft.Data.SqlClient;
 
 namespace CdcImpact.LoadGen;
 
+/// <summary>The two transaction shapes. Configuration A uses UpdateOnly; B and C use UpdateAndOutbox.</summary>
+public enum Transaction
+{
+    UpdateOnly,
+    UpdateAndOutbox,
+}
+
 /// <summary>
-/// The measured transaction: update one Task row and, for configurations B and
-/// C, insert a JSON payload into the outbox, in one transaction and one round
-/// trip. C runs the same SQL as B; the difference is CDC on the outbox.
+/// The measured transaction: update one Task row and, optionally, insert a
+/// JSON payload into the outbox, in one transaction and one round trip. This
+/// is what the API would do. Whether CDC is on is invisible here.
 /// </summary>
 public sealed class TaskWorkload
 {
-    public const string UpdateOnly =
+    public const string UpdateOnlySql =
         "SET XACT_ABORT ON; BEGIN TRAN; " +
         "UPDATE dbo.Task SET Status = @status, UpdatedAt = SYSUTCDATETIME() WHERE TaskId = @id; " +
         "COMMIT;";
 
-    public const string UpdateAndOutbox =
+    public const string UpdateAndOutboxSql =
         "SET XACT_ABORT ON; BEGIN TRAN; " +
         "UPDATE dbo.Task SET Status = @status, UpdatedAt = SYSUTCDATETIME() WHERE TaskId = @id; " +
         "INSERT dbo.Outbox (AggregateId, EventType, CreatedAt, Payload) VALUES (@id, 'TaskUpdated', SYSUTCDATETIME(), @payload); " +
         "COMMIT;";
 
     private readonly string _connectionString;
-    private readonly Configuration _configuration;
+    private readonly Transaction _transaction;
     private readonly long _maxTaskId;
     private readonly string _payloadTemplate;
     private readonly SqlDbType _payloadType;
     private readonly int _timeout;
 
-    public TaskWorkload(string connectionString, Configuration configuration, long maxTaskId, int payloadChars, string payloadType, int commandTimeoutSeconds)
+    public TaskWorkload(string connectionString, Transaction transaction, long maxTaskId, int payloadChars, string payloadType, int commandTimeoutSeconds)
     {
         _connectionString = connectionString;
-        _configuration = configuration;
+        _transaction = transaction;
         _maxTaskId = Math.Max(1, maxTaskId);
         _payloadTemplate = BuildPayloadTemplate(payloadChars);
         _payloadType = payloadType == "varchar(max)" ? SqlDbType.VarChar : SqlDbType.NVarChar;
@@ -55,7 +61,7 @@ public sealed class TaskWorkload
 
     public static string Payload(string template, long id) => template.Replace("{{ID}}", id.ToString("D20"));
 
-    public string SqlText => _configuration == Configuration.A ? UpdateOnly : UpdateAndOutbox;
+    public string SqlText => _transaction == Transaction.UpdateOnly ? UpdateOnlySql : UpdateAndOutboxSql;
 
     public async Task ExecuteAsync(CancellationToken ct)
     {
@@ -65,7 +71,7 @@ public sealed class TaskWorkload
         await using var cmd = new SqlCommand(SqlText, conn) { CommandTimeout = _timeout };
         cmd.Parameters.Add("@id", SqlDbType.BigInt).Value = id;
         cmd.Parameters.Add("@status", SqlDbType.TinyInt).Value = (byte)(id % 5);
-        if (_configuration != Configuration.A)
+        if (_transaction == Transaction.UpdateAndOutbox)
         {
             cmd.Parameters.Add("@payload", _payloadType, -1).Value = Payload(_payloadTemplate, id);
         }

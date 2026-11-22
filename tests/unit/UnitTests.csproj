@@ -8,6 +8,6 @@
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/orchestrator/Orchestrator.csproj" />
+    <ProjectReference Include="../../src/loadgen/LoadGen.csproj" />
   </ItemGroup>
 </Project>

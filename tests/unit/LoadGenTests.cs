@@ -1,6 +1,4 @@
-using CdcImpact.Common;
 using CdcImpact.LoadGen;
-using CdcImpact.Orchestrator;
 using Xunit;
 
 namespace CdcImpact.Tests.Unit;
@@ -26,7 +24,6 @@ public class OpenLoopRunnerTests
         var r = await runner.RunAsync(400, TimeSpan.FromSeconds(2), ct => Task.Delay(50, ct), TestContext.Current.CancellationToken);
         Assert.Equal(800, r.Scheduled); // the schedule does not slow down
         Assert.True(r.AchievedRate < 0.95 * 400, $"achieved {r.AchievedRate}");
-        Assert.True(Ladder.ShouldStop(r, 0.95));
         // Queueing makes later transactions wait far longer than the 50 ms service time.
         Assert.True(r.Latency.P99Ms > 500, $"p99 {r.Latency.P99Ms}");
     }
@@ -85,10 +82,10 @@ public class PayloadTests
     }
 
     [Fact]
-    public void Configuration_A_has_no_outbox_insert()
+    public void Update_only_has_no_outbox_insert()
     {
-        Assert.DoesNotContain("Outbox", TaskWorkload.UpdateOnly);
-        Assert.Contains("INSERT dbo.Outbox", TaskWorkload.UpdateAndOutbox);
-        Assert.Contains("BEGIN TRAN", TaskWorkload.UpdateAndOutbox);
+        Assert.DoesNotContain("Outbox", TaskWorkload.UpdateOnlySql);
+        Assert.Contains("INSERT dbo.Outbox", TaskWorkload.UpdateAndOutboxSql);
+        Assert.Contains("BEGIN TRAN", TaskWorkload.UpdateAndOutboxSql);
     }
 }
