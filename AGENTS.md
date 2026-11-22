@@ -38,7 +38,7 @@ Last updated: 2026-11-22.
   0012), including Application Insights and diagnostic settings.
 - Step 2 (spike) in progress. Everything is merged through PR #7. First
   spike run 45049809770 failed at apply (database zone redundancy, fixed in
-  PR #7). No spike item has passed yet.
+  PR #7). Its destroy and verify-clean passed. No spike item has passed yet.
 - The Container Apps environment is persistent (decision 0013); budget 100.
   Remove it after the confirming run.
 - No measurement exists.

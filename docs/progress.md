@@ -73,8 +73,8 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
       should match." The provider sends `zone_redundant = false` when the
       argument is unset (provider source, v5.14.0). Fix: set it to `true` on
       the databases. The rig never started, so no spike item was tested.
-- [x] Spike item 7 (environment creation time): 5m50s to create; deletion
-      still running 13 minutes into destroy. Owner chose to make the
+- [x] Spike item 7 (environment creation time): 5m50s to create, 24m18s to
+      delete. Destroy and verify-clean of that run passed. Owner chose to make the
       environment persistent with D8 at zero nodes, and to raise the budget
       to 100 (decision 0013).
 - [ ] Persistent apply: environment, its diagnostic setting, budget 100.

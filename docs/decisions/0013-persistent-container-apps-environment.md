@@ -12,9 +12,8 @@ create, and says to move it to the persistent layer if that dominates run time.
 Measured in spike run 45049809770 (apply failed later for an unrelated reason):
 - Container Apps environment: created in 5m50s.
 - Event Hubs namespace 30s, SQL server 1m03s, elastic pool 1m18s.
-- Destroy: the environment was the only ephemeral resource left 13 minutes into
-  the destroy job. The exact delete time is recorded in progress once the job
-  ends.
+- Destroy: the environment took 24m18s to delete. Everything else was gone in
+  under 70 seconds (pool 13s, Event Hubs namespace 12s, SQL server 16s).
 
 The environment is the largest fixed cost of every run in wall-clock time.
 
@@ -67,5 +66,6 @@ right after the environment, and stays.
   1 to change (budget), 0 to destroy. Plan check passed.
 - Not documented: whether `minimum_count = 0` is accepted for a dedicated
   profile. The persistent apply tests it.
+- Destroy and `verify-clean` of run 45049809770 succeeded (18:06 UTC).
 - Not yet measured: how long the first job start waits for a D8 node from zero.
   The next spike run records it.
