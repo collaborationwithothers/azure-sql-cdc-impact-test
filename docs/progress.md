@@ -17,7 +17,7 @@ Rules for this file:
 | --- | --- | --- |
 | 1 | Repo, `validate` workflow, persistent Terraform, bootstrap instructions | Done, PR #1 |
 | 1b | Bootstrap apply of the persistent layer, environment secrets | Done 2026-11-22 (decision 0006). OIDC sign-in proof via `destroy` workflow pending |
-| 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | Not started |
+| 2 | Spike: ephemeral layer plus one configuration C step (section 12 items 1 to 8) | In progress, branch `agent/rig`. Restructuring to decision 0010 |
 | 3 | Load generator, collector, orchestrator, smoke mode | Not started |
 | 4 | `run-test`, `sweep`, `destroy`. Prove destroy on success, failure, timeout | Not started |
 | 5 | Report generator and sizing translation | Not started |
@@ -40,6 +40,22 @@ Rules for this file:
 - [x] AGENTS.md Bootstrap section: environment secrets need repo admin.
 - [x] Decision records 0002 to 0005.
 - [x] PR opened, CI green, merged (#1).
+
+## Step 2 status (2026-11-22)
+
+- Owner decisions: 0008 (no VNet, SQL public endpoint, Entra-only), 0010 (.NET
+  holds application logic only; Python orchestrator and collector; Debezium in
+  its own container controlled by marker files).
+- Done on `agent/rig`: Java token jar with build-time self-test (passes);
+  SQL scripts; .NET open-loop runner and transaction with unit tests (18 pass)
+  and container tests against SQL Server (13 pass, before the restructure).
+- Found by container tests: SqlClient rejects invariant globalization mode.
+  `InvariantGlobalization` is false.
+- Resource group snapshot before first ephemeral apply: 29 groups in the
+  subscription (local file, not committed). Retake just before applying.
+- To do: restructure per 0010, Python orchestrator and collector, rig and
+  debezium images, ephemeral Terraform (no VNet, two containers, EmptyDir),
+  run-test and sweep workflows, then dispatch the spike.
 
 ## Open questions carried forward
 
