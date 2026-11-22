@@ -1,6 +1,11 @@
 # CDC impact test: design proposal
 
-Status: approved by the owner on 2026-11-22. Nothing has been built. Open choices were delegated to the agent and are recorded in section 10.
+Status: approved by the owner on 2026-11-22. Build in progress; see `docs/progress.md`. Open choices were delegated to the agent and are recorded in section 10.
+
+**Changes since approval (owner decisions, 2026-11-22):**
+- No virtual network and no private endpoint. SQL public endpoint with Entra-only sign-in (decision 0008). Section 5's networking bullets are superseded.
+- .NET holds application logic only: the load generator. Orchestrator and collector are Python; Debezium runs in its own container in the same job, controlled through marker files (decision 0010). Resolves D6.
+- Application Insights in the persistent layer, with full per-request tracing (decision 0011). Diagnostic settings on every resource (decision 0012).
 
 ## 1. What this answers
 

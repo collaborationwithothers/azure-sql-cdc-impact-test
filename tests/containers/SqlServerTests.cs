@@ -44,7 +44,8 @@ public sealed class SqlServerFixture : IAsyncLifetime
         await db.OpenAsync();
         var schema = (await File.ReadAllTextAsync(Path.Combine(RepoRoot, "sql", "schema.sql"))).Replace("{{PAYLOAD_TYPE}}", "nvarchar(max)");
         await new SqlCommand(schema, db).ExecuteNonQueryAsync();
-        var seed = new SqlCommand(await File.ReadAllTextAsync(Path.Combine(RepoRoot, "sql", "seed-batch.sql")), db);
+        await new SqlCommand(await File.ReadAllTextAsync(Path.Combine(RepoRoot, "sql", "seed-proc.sql")), db).ExecuteNonQueryAsync();
+        var seed = new SqlCommand("dbo.SeedTaskBatch", db) { CommandType = System.Data.CommandType.StoredProcedure };
         seed.Parameters.AddWithValue("@from", 0L);
         seed.Parameters.AddWithValue("@to", 20_000L);
         seed.Parameters.AddWithValue("@matters", 100);

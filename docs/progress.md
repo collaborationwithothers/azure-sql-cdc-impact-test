@@ -43,19 +43,27 @@ Rules for this file:
 
 ## Step 2 status (2026-11-22)
 
-- Owner decisions: 0008 (no VNet, SQL public endpoint, Entra-only), 0010 (.NET
-  holds application logic only; Python orchestrator and collector; Debezium in
-  its own container controlled by marker files).
-- Done on `agent/rig`: Java token jar with build-time self-test (passes);
-  SQL scripts; .NET open-loop runner and transaction with unit tests (18 pass)
-  and container tests against SQL Server (13 pass, before the restructure).
-- Found by container tests: SqlClient rejects invariant globalization mode.
-  `InvariantGlobalization` is false.
-- Resource group snapshot before first ephemeral apply: 29 groups in the
-  subscription (local file, not committed). Retake just before applying.
-- To do: restructure per 0010, Python orchestrator and collector, rig and
-  debezium images, ephemeral Terraform (no VNet, two containers, EmptyDir),
-  run-test and sweep workflows, then dispatch the spike.
+Owner decisions this step: 0008 (no VNet), 0010 (component split), 0011
+(Application Insights, full tracing), 0012 (diagnostics everywhere).
+
+Done (branch `agent/rig-v2`, superseding `agent/rig`):
+- [x] Persistent: Application Insights, telemetry role, diagnostic settings
+      (PR #4, applied). Plan check fixed: it had never run.
+- [x] .NET load generator CLI (`window`, `steady`) with OpenTelemetry. Unit 9/9,
+      container 6/6, including SQL tracing with SqlClient 7.1.2.
+- [x] Java token jar; self-test passes in the image build.
+- [x] Python `cdcrig`: settings, SQL, collector, Debezium control, orchestrator.
+- [x] Debezium image: control script, Java agent 3.7.10 (checksum pinned).
+- [x] Ephemeral Terraform: SQL, pool, Event Hubs, Container Apps environment and
+      two-container job, diagnostics. `validate` passes.
+- [x] Workflows `run-test`, `sweep`; sanitiser for results.
+- [x] Container tests (local, linux/amd64): Python 27/27; Debezium control
+      protocol 4/4. Bug found and fixed: CDC cleanup never deleted rows at the
+      current maximum LSN; a marker row now moves the mark past them.
+- [ ] PR, CI green, merge.
+- [ ] Retake resource group snapshot, dispatch `run-test` mode `spike`,
+      compare snapshot (decision 0008).
+- [ ] Record spike results per design section 12 items 1 to 8.
 
 ## Open questions carried forward
 

@@ -1,0 +1,13 @@
+{
+  "role": { "name": "debezium" },
+  "sampling": { "percentage": 100 },
+  "authentication": { "enabled": true, "type": "UAMI", "clientId": "__CLIENT_ID__" },
+  "jmxMetrics": [
+    { "name": "debezium.streaming.milliseconds_behind_source", "objectName": "debezium.sql_server:type=connector-metrics,context=streaming,*", "attribute": "MilliSecondsBehindSource" },
+    { "name": "debezium.streaming.total_events_seen", "objectName": "debezium.sql_server:type=connector-metrics,context=streaming,*", "attribute": "TotalNumberOfEventsSeen" },
+    { "name": "debezium.streaming.queue_remaining_capacity", "objectName": "debezium.sql_server:type=connector-metrics,context=streaming,*", "attribute": "QueueRemainingCapacity" },
+    { "name": "debezium.streaming.connected", "objectName": "debezium.sql_server:type=connector-metrics,context=streaming,*", "attribute": "Connected" },
+    { "name": "debezium.streaming.committed_transactions", "objectName": "debezium.sql_server:type=connector-metrics,context=streaming,*", "attribute": "NumberOfCommittedTransactions" }
+  ],
+  "metricIntervalSeconds": 10
+}

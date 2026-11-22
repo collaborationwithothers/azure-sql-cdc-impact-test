@@ -1,0 +1,24 @@
+[project]
+name = "cdcrig"
+version = "0.1.0"
+description = "Orchestrator and collector for the CDC impact test (decision 0010)."
+requires-python = ">=3.12"
+dependencies = [
+  "pyodbc==5.5.0",
+  "azure-identity==1.27.0",
+  "azure-storage-blob==12.31.1",
+  "azure-monitor-opentelemetry==1.8.12",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.2.0"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["cdcrig"]
+
+[tool.setuptools.package-data]
+cdcrig = ["sql/*.sql"]

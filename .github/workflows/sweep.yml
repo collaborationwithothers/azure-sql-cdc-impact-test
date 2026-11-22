@@ -1,0 +1,51 @@
+name: sweep
+
+# Safety net (design section 8): every 30 minutes, destroy the ephemeral layer
+# if any of its resources is past its deadline tag.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ephemeral-destroy
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    environment: azure
+    timeout-minutes: 90
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.6"
+          terraform_wrapper: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/ephemeral.sh discover
+      - name: Destroy expired resources
+        run: |
+          if [ "$(scripts/ephemeral.sh expired)" = "yes" ]; then
+            echo "Ephemeral resources are past their deadline. Destroying." | tee -a "$GITHUB_STEP_SUMMARY"
+            scripts/ephemeral.sh destroy
+            scripts/ephemeral.sh verify-clean
+          else
+            echo "Nothing past its deadline."
+          fi

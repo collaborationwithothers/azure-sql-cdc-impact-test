@@ -1,9 +1,10 @@
 **/bin/
 **/obj/
 .git/
-.terraform/
 **/.terraform/
-tests/
-report/
 docs/
 infra/
+report/
+tests/unit/
+tests/containers/
+**/__pycache__/

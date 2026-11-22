@@ -1,34 +1,27 @@
-# Test-rig image: .NET orchestrator, load generator and collector, plus
-# Debezium Server with the managed identity token classes (decision 0007).
-# Debezium runs as a child process of the orchestrator (decision 0009).
+# Rig image: the Python orchestrator and collector (src/rig), with the .NET
+# load generator (src/loadgen) published self-contained. Debezium runs in its
+# own image (debezium/Dockerfile). Decision 0010.
 
-FROM quay.io/debezium/server:3.7.1.Final AS debezium
-
-# Compile and self-test the token classes against Debezium's own jars.
-FROM eclipse-temurin:21-jdk AS java
-COPY --from=debezium /debezium/lib /dbzlib
-COPY debezium/auth /auth
-RUN javac --release 21 -d /out -cp "/dbzlib/*" /auth/src/cdcimpact/*.java \
- && javac --release 21 -d /selftest -cp "/out:/dbzlib/*" /auth/test/cdcimpact/SelfTest.java \
- && java -cp "/out:/selftest:/dbzlib/*" cdcimpact.SelfTest \
- && jar cf /cdcimpact-auth.jar -C /out .
-
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS loadgen
 WORKDIR /src
 COPY nuget.config global.json Directory.Build.props Directory.Packages.props ./
-COPY sql ./sql
-COPY src ./src
-RUN dotnet publish src/orchestrator/Orchestrator.csproj -c Release -o /app
+COPY src/loadgen ./src/loadgen
+RUN dotnet publish src/loadgen/LoadGen.csproj -c Release -r linux-x64 --self-contained true -o /out
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0
-COPY --from=eclipse-temurin:21-jre /opt/java/openjdk /opt/java/openjdk
-ENV JAVA_HOME=/opt/java/openjdk \
-    PATH=/opt/java/openjdk/bin:$PATH \
-    OTEL_SDK_DISABLED=true
-COPY --from=debezium /debezium /debezium
-COPY --from=java /cdcimpact-auth.jar /debezium/lib/cdcimpact-auth.jar
-COPY --from=dotnet /app /app
-RUN chown -R app:app /debezium && mkdir -p /tmp/results && chown app:app /tmp/results
-USER app
-WORKDIR /app
-ENTRYPOINT ["dotnet", "/app/rig.dll"]
+FROM python:3.13-slim-bookworm
+# Microsoft ODBC Driver 18 for SQL Server, from Microsoft's Debian 12 repository.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl gnupg ca-certificates libicu72 \
+ && curl -sSfL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+ && curl -sSfL https://packages.microsoft.com/config/debian/12/prod.list -o /etc/apt/sources.list.d/mssql-release.list \
+ && apt-get update \
+ && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
+ && apt-get purge -y gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+COPY --from=loadgen /out /opt/loadgen
+COPY src/rig /src/rig
+COPY sql /src/rig/cdcrig/sql
+RUN pip install --no-cache-dir "/src/rig[test]"
+COPY tests/rig /tests/rig
+ENV PYTHONUNBUFFERED=1
+WORKDIR /tmp
+ENTRYPOINT ["python", "-m", "cdcrig"]
