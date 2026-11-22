@@ -2,7 +2,7 @@
 # Shared helpers for the workflows that touch the ephemeral layer.
 # Run only inside GitHub Actions, in the "azure" environment, after azure/login.
 #
-# Usage: scripts/ephemeral.sh discover|init|destroy|verify-clean|expired
+# Usage: scripts/ephemeral.sh relogin|discover|init|destroy|verify-clean|expired
 set -euo pipefail
 
 RG="rg-cdc-impact-test"
@@ -17,6 +17,20 @@ COMPANION_TYPE="microsoft.alertsmanagement/smartDetectorAlertRules"
 NOT_PERSISTENT="[?tags.layer!='persistent' && type!='${COMPANION_TYPE}']"
 
 mask() { [ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$1"; return 0; }
+
+# The GitHub OIDC token that azure/login exchanges is valid for five minutes.
+# The CLI reuses it whenever it needs a token for a new resource (storage, for
+# example), so any az call more than five minutes after azure/login can fail
+# with AADSTS700024 (run 45054291170). This asks GitHub for a fresh token and
+# signs in again. Needs "permissions: id-token: write" on the job.
+relogin() {
+  local tok
+  tok=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?no id-token permission}" \
+    "${ACTIONS_ID_TOKEN_REQUEST_URL:?no id-token permission}&audience=api://AzureADTokenExchange" | jq -r .value)
+  mask "$tok"
+  az login --service-principal -u "${ARM_CLIENT_ID:?}" -t "${ARM_TENANT_ID:?}" --federated-token "$tok" -o none
+  az account set -s "${ARM_SUBSCRIPTION_ID:?}"
+}
 
 # Finds persistent resources by their purpose tag and writes their names to
 # $GITHUB_ENV, masked, so no generated name is printed in a public log.
@@ -54,12 +68,15 @@ init() {
 has_layer() { ls "$TF_DIR"/*.tf >/dev/null 2>&1; }
 
 destroy() {
+  relogin
   if has_layer; then
     init
     terraform -chdir="$TF_DIR" destroy -input=false -auto-approve -lock-timeout=30m
   else
     echo "No ephemeral Terraform in this commit. Skipping terraform destroy."
   fi
+  # Terraform destroy can outlast the five-minute sign-in token.
+  relogin
   # Belt and braces: delete anything still tagged as ephemeral. Persistent
   # resources carry layer=persistent and are never matched.
   local ids
@@ -79,6 +96,7 @@ destroy() {
 # Untagged resources (for example a private endpoint NIC) also fail the check.
 verify_clean() {
   local left
+  relogin
   left=$(az resource list -g "$RG" --query "${NOT_PERSISTENT}.type" -o tsv)
   if [ -n "$left" ]; then
     echo "NOT CLEAN. Non-persistent resources remain, by type:"
@@ -104,11 +122,12 @@ exists() {
 }
 
 case "${1:-}" in
+  relogin) relogin ;;
   discover) discover ;;
   init) init ;;
   destroy) destroy ;;
   verify-clean) verify_clean ;;
   expired) expired ;;
   exists) exists ;;
-  *) echo "usage: $0 discover|init|destroy|verify-clean|expired|exists" >&2; exit 2 ;;
+  *) echo "usage: $0 relogin|discover|init|destroy|verify-clean|expired|exists" >&2; exit 2 ;;
 esac
