@@ -36,12 +36,17 @@ Last updated: 2026-11-22.
 
 - Build order step 1 done. Persistent layer applied (decisions 0006, 0011,
   0012), including Application Insights and diagnostic settings.
-- Step 2 (spike): items 1 to 8 passed in run 45054291170 (decision 0014).
-  Open: Debezium telemetry to Application Insights; export re-proof; destroy
-  on failure and on timeout.
-- The Container Apps environment is persistent (decision 0013); budget 100.
-  Remove it after the confirming run.
-- No measurement exists.
+- Step 2 (spike) passed in run 45054291170 (decision 0014). Destroy proven on
+  success and failure; the timeout proof was waived (decision 0015).
+- First measurement: quick run 45062722769-1 (loads 100 to 500, 3 rounds of B
+  and C, 1 of A). Report on the `results` branch,
+  `results/45062722769-1/report/SUMMARY.md`. The 6 vCore confirming run was
+  not run (decision 0018).
+- The Container Apps environment is off (`rig_environment_enabled = false`).
+  A live run needs it set to true and the persistent layer applied first.
+- Not verified: Debezium telemetry in Application Insights; Event Hubs message
+  counts for 45062722769 (old metrics window); data storage price for a
+  zone-redundant pool.
 - Detail and next steps: `docs/progress.md`.
 
 ## Autonomy model

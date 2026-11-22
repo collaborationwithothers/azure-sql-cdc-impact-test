@@ -69,3 +69,7 @@ right after the environment, and stays.
 - Destroy and `verify-clean` of run 45049809770 succeeded (18:06 UTC).
 - Not yet measured: how long the first job start waits for a D8 node from zero.
   The next spike run records it.
+
+## Amendment 2026-11-22: environment switched off after the quick run
+
+After quick run 45062722769 the environment was removed from the persistent layer by setting `rig_environment_enabled = false` (default). The block stays in Terraform behind that variable, so the next test campaign sets it to true and applies the persistent layer, which takes about 5 minutes. `scripts/bootstrap.sh plan` accepts `ALLOW_DELETE=1` to let `plan_check.py` pass a plan that deletes, which this removal needs. Verified by `terraform validate` and by reading the plan before applying: it deleted only the environment and its diagnostic setting.
