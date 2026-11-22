@@ -54,6 +54,12 @@ resource "azurerm_storage_account" "this" {
   }
 
   tags = merge(local.tags, { purpose = "state-and-results" })
+
+  # This account holds the persistent layer's own state. Terraform must refuse
+  # to destroy it.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_storage_container" "tfstate" {

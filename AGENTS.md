@@ -34,9 +34,10 @@ detailed task list and next steps live in `docs/progress.md`.
 
 Last updated: 2026-11-22.
 
-- Build order step 1 in progress on branch `agent/foundation`, not merged.
-- No Azure resource exists. The persistent layer has not been applied.
-- No workflow and no application code on `main`.
+- Build order step 1 done. Persistent layer applied 2026-11-22 (decision 0006).
+  State in the `tfstate` container. `azure` environment secrets set.
+- Workflows: `validate`, `destroy`. No ephemeral layer, no application code.
+- Next: spike (design section 12). See `docs/progress.md`.
 
 ## Autonomy model
 
