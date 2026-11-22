@@ -183,6 +183,17 @@ jobs:
           az storage blob download-batch --auth-mode login --account-name "$STATE_ACCOUNT" -s results -d results --pattern "$RUN_ID/*" -o none || true
           server=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_mssql_server.this 2>/dev/null | awk -F'"' '!found && /^ *name *=/ {print $2; found=1}')
           namespace=$(terraform -chdir=infra/ephemeral state show -no-color azurerm_eventhub_namespace.this 2>/dev/null | awk -F'"' '!found && /^ *name *=/ {print $2; found=1}')
+          # Event Hubs delivery, read from Azure Monitor before destroy. The
+          # diagnostic-setting export carried no message counts (decision 0014).
+          if [ -n "$namespace" ] && [ -d "results/$RUN_ID" ]; then
+            ns_id=$(az eventhubs namespace show -g "$RG" -n "$namespace" --query id -o tsv)
+            az monitor metrics list --resource "$ns_id" --interval PT1M --aggregation Total \
+              --start-time "$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)" \
+              --metrics IncomingMessages IncomingBytes IncomingRequests ThrottledRequests UserErrors ServerErrors \
+              -o json > "results/$RUN_ID/eventhubs_metrics.json" || echo "Event Hubs metrics not read"
+            python3 -c "import json,sys; d=json.load(open(sys.argv[1])); [print('eventhubs', m['name']['value'], int(sum(p.get('total') or 0 for t in m['timeseries'] for p in t['data']))) for m in d['value']]" \
+              "results/$RUN_ID/eventhubs_metrics.json" | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
           SANITIZE_VALUES="$server $namespace $STATE_ACCOUNT $TF_VAR_acr_name $TF_VAR_log_analytics_workspace_name $TF_VAR_application_insights_name $RIG_CLIENT_ID $ARM_TENANT_ID $ARM_SUBSCRIPTION_ID" \
             python3 scripts/sanitize.py results
           echo "apply_seconds=${APPLY_SECONDS:-}" > "results/$RUN_ID/pipeline.txt" 2>/dev/null || true

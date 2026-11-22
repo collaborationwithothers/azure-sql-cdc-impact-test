@@ -14,7 +14,7 @@ None of its numbers is a result.
 | # | Item | Outcome | Evidence |
 | --- | --- | --- | --- |
 | 1 | Debezium signs in to Azure SQL with the managed identity | Passed | `debezium_started` (11 s); Debezium metrics: 8841 events seen, 0 erroneous; `cdc_marker_captured`. No SQL login exists. |
-| 1b | Debezium publishes to Event Hubs with an Entra token (decision 0007) | Passed, with one gap | Debezium log: OAUTHBEARER "Successfully logged in", "4465 records sent during previous 00:00:40", engine "completed normally", exit code 0. Gap: the namespace's metrics in Log Analytics show only 2 incoming requests and no message counts, so delivery is shown by Debezium's own log, not by Event Hubs. Next run checks the namespace metrics directly. |
+| 1b | Debezium publishes to Event Hubs with an Entra token (decision 0007) | Passed, with one gap | Debezium log: OAUTHBEARER "Successfully logged in", "4465 records sent during previous 00:00:40", engine "completed normally", exit code 0. Gap: the namespace's metrics in Log Analytics show only 2 incoming requests and no message counts, so delivery is shown by Debezium's own log, not by Event Hubs. Run 45056601736 showed the same. The export step now reads the metrics from Azure Monitor before destroy. |
 | 2 | The creating principal can enable CDC | Passed | `cdc_enable`. The rig identity is the Entra admin (decision 0004). |
 | 3 | Debezium lag is readable from its metrics | Passed | `debezium_metrics_readable`: 43 series, including `MilliSecondsBehindSource` (420 at the end of the step). |
 | 4 | Azure Policy does not block any ephemeral resource | Passed | Apply: 14 added, 0 failed. |

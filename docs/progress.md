@@ -82,7 +82,11 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [x] Spike run 45054291170: rig succeeded, all checks passed. Items 1 to 8
       recorded in decision 0014. Export failed on an expired OIDC token
       (fixed: `ephemeral.sh relogin`). Destroy 2m52s, verify-clean passed.
-- [ ] Spike re-run to prove the export fix and check Event Hubs metrics.
+- [x] Spike run 45056601736: all checks passed again; export succeeded, so
+      the re-sign-in works. Event Hubs message counts still absent from Log
+      Analytics although documented as exportable.
+- [ ] Event Hubs delivery: the export step now reads `IncomingMessages` from
+      Azure Monitor before destroy. Proof due in the next run that sends events.
 - [ ] Debezium telemetry missing from Application Insights (decision 0014).
 - [ ] Destroy on failure (inject=fail) and on timeout (inject=timeout).
 
