@@ -90,6 +90,10 @@ Done (branch `agent/rig-v2`, superseding `agent/rig`):
 - [ ] Debezium telemetry missing from Application Insights (decision 0014).
 - [ ] Destroy on failure: run 45058781127 (inject=fail).
 - [ ] Destroy on timeout: waived for today's runs by the owner (decision 0015); run it afterwards.
+- [x] Destroy on failure proved: run 45058781127, 14 destroyed, verify-clean passed.
+- [ ] Catch-up flaw (found by the report generator): catch-up compared Debezium
+      with the change table before capture had copied every commit. Fixed with
+      a marker row (PR: catch-up marker). Spike catch-up times are not valid.
 - [ ] Smoke, then quick (4 vCores), then confirm (6 vCores); remove the persistent environment after.
 
 ## Open questions carried forward
