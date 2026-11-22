@@ -10,10 +10,9 @@ variable "location" {
   default     = "swedencentral"
 }
 
-variable "github_repository" {
-  description = "owner/name of the GitHub repository trusted by the federated credential."
+variable "github_subject_prefix" {
+  description = "OIDC subject prefix of the repository, read at bootstrap from GET /repos/{owner}/{repo}/actions/oidc/customization/sub (field sub_claim_prefix). The repo uses GitHub's immutable subject format."
   type        = string
-  default     = "collaborationwithothers/azure-sql-cdc-impact-test"
 }
 
 variable "github_environment" {
@@ -32,4 +31,10 @@ variable "budget_start_date" {
   description = "First day of the month in which the budget starts, RFC 3339."
   type        = string
   default     = "2026-11-01T00:00:00Z"
+}
+
+variable "budget_contact_emails" {
+  description = "Budget alert recipients. Supplied at bootstrap, never committed."
+  type        = list(string)
+  sensitive   = true
 }

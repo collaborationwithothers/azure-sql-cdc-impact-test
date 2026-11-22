@@ -117,7 +117,7 @@ resource "azurerm_federated_identity_credential" "github_azure_environment" {
   parent_id = azurerm_user_assigned_identity.pipeline.id
   audience  = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_repository}:environment:${var.github_environment}"
+  subject   = "${var.github_subject_prefix}:environment:${var.github_environment}"
 }
 
 # Test-rig identity. The Container Apps job runs as this identity. It is also
@@ -199,8 +199,9 @@ resource "azurerm_role_assignment" "bootstrapper_blob" {
 
 # ---------------------------------------------------------------------------
 # Budget alert. Must exist before the first apply of the ephemeral layer.
-# Notifications go to the resource group's Owner role holders, so no email
-# address is committed.
+# Notifications go to Owner role holders and to emails supplied at bootstrap
+# time. Azure requires at least one email at resource group scope. The emails
+# are a bootstrap input and are never committed.
 # ---------------------------------------------------------------------------
 
 resource "azurerm_consumption_budget_resource_group" "this" {
@@ -219,6 +220,7 @@ resource "azurerm_consumption_budget_resource_group" "this" {
     operator       = "GreaterThan"
     threshold_type = "Actual"
     contact_roles  = ["Owner"]
+    contact_emails = var.budget_contact_emails
   }
 
   notification {
@@ -227,6 +229,7 @@ resource "azurerm_consumption_budget_resource_group" "this" {
     operator       = "GreaterThan"
     threshold_type = "Actual"
     contact_roles  = ["Owner"]
+    contact_emails = var.budget_contact_emails
   }
 
   notification {
@@ -235,6 +238,7 @@ resource "azurerm_consumption_budget_resource_group" "this" {
     operator       = "GreaterThan"
     threshold_type = "Forecasted"
     contact_roles  = ["Owner"]
+    contact_emails = var.budget_contact_emails
   }
 
   lifecycle {
