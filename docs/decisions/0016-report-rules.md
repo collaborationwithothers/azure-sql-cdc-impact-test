@@ -85,11 +85,13 @@ these rules carry the whole burden of not publishing noise as a result.
   context; `README.md` stays the technical appendix. It avoids the
   appendix's vocabulary: "the application database" and "the neighbouring
   database", "without CDC" (B) and "with CDC" (C), "round" for a repeat,
-  "run-to-run variation" for jitter. Configuration A is not shown. One table
-  per run, per load: handled or not, log per update, CPU and log write rate
-  (percent of the application database's limit), p95 response time, the
-  neighbouring database's p95, change-table size at the default retention,
-  and the extra monthly cost. It computes nothing new: means over shared
+  "run-to-run variation" for jitter. Configuration A is not shown. "What this
+  means" comes first, after the opening paragraph. Then one small table per
+  metric (at most 5 columns, rows per load, each with a one-sentence
+  explanation): handled or not, p95 response time, log per update, log write
+  rate and CPU (percent of the application database's limit), the
+  neighbouring database's p95, and storage and cost (change-table size at
+  the default retention, extra monthly cost). It computes nothing new: means over shared
   rounds (`analysis.paired`, `config_value`), the uplift rule
   (`analysis.uplift`; "within run-to-run variation"), the per-round range in
   brackets (`analysis.paired_diffs`, shared with the extra-log table), the

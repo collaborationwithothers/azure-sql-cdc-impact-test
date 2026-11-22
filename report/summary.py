@@ -52,6 +52,34 @@ COMPARED = (
 )
 NEIGHBOUR = ("Neighbouring database response time, 95th percentile (ms)",
              lambda m: (m.neighbour.get("p95_ms", math.nan), []), 2)
+_BY_NAME = {c[0]: c for c in COMPARED + (NEIGHBOUR,)}
+# Table order for the reader: what users feel first, then the causes, then the neighbour.
+METRIC_ORDER = tuple(_BY_NAME[n] for n in (
+    "Response time, 95th percentile (ms)", "Log written per update (KB)",
+    "Log write rate (% of the database's limit)", "CPU used (% of the database's limit)", NEIGHBOUR[0]))
+OVERLOADED_SHORT = "overloaded, see note"
+EXPLAIN = {
+    "handled": ("Whether the application database kept up with the requested updates per second: at least 95% of "
+                "them done, with no errors and nothing dropped. A \"no\" means that load is too much for this setup."),
+    "Response time, 95th percentile (ms)": (
+        "How long the slowest 5 in 100 updates took, in milliseconds; this is the delay the API's users notice when "
+        "the system is busy."),
+    "Log written per update (KB)": (
+        "How much transaction log, the database's record of every change used for recovery and backups, each update "
+        "writes; CDC can add to it, because copying each change into the change table is itself a logged write."),
+    "Log write rate (% of the database's limit)": (
+        "How close the application database is to its cap on log writing speed; near 100% the database holds "
+        "updates back until the log catches up, so they slow down."),
+    "CPU used (% of the database's limit)": (
+        "How much of the application database's processing allowance (its vCore cap) the updates used; near 100% "
+        "the database cannot work any faster."),
+    NEIGHBOUR[0]: (
+        "How long the other database in the same pool took for its own steady updates; it shows whether switching "
+        "on CDC in one database slows down its neighbours."),
+    "storage": (
+        "How much space CDC's change table takes when changes are kept for the default 3 days, and an estimate of "
+        "what CDC adds to the monthly bill."),
+}
 
 
 def handled(ms: list[A.StepMetrics]) -> str:
@@ -165,7 +193,8 @@ class Summary:
             return
         ct = ST.bytes_per_row(ST.change_rows(run, self.r.steps.get(rid, [])))
         retention_s = ST.CDC_RETENTION_MINUTES * 60
-        rows, best = [], None
+        # One entry per load: the cells of every table, computed once.
+        loads, best = [], None
         for t in sorted({m.step.step_tps for m in ms}):
             mb, mc, shared = A.paired(by.get((WITHOUT, t), []), by.get((WITH, t), []))
             if not shared:  # only one side ran at this load: show what it has
@@ -174,33 +203,42 @@ class Summary:
             over = both and not all(m.step.carries for m in mb + mc)
             if both and not over:
                 best = (t, mb, mc, shared)
-            row = [f"{t:,}", handled(mb), handled(mc)]
-            for _, fn, d in COMPARED:
+            cells = {"handled": [handled(mb), handled(mc)]}
+            for name, fn, d in COMPARED + (NEIGHBOUR,):
                 vb = A.config_value(mb, fn) if mb else A.Value(math.nan, math.nan)
                 vc = A.config_value(mc, fn) if mc else A.Value(math.nan, math.nan)
-                row += [f(vb.value, d), f(vc.value, d), added(vc, vb, A.paired_diffs(mc, mb, fn, shared), d)[0]]
-            _, nfn, nd = NEIGHBOUR
-            row += [f(A.config_value(mb, nfn).value, nd) if mb else "not measured",
-                    f(A.config_value(mc, nfn).value, nd) if mc else "not measured"]
+                cells[name] = [f(vb.value, d), f(vc.value, d), added(vc, vb, A.paired_diffs(mc, mb, fn, shared), d)[0]]
             rng = ct.get(t)
-            row.append(f(ST.retained_bytes(rng.mean, t, retention_s) / ST.GB, 2) if rng and rng.n else "not measured")
-            row.append(self.monthly_cell(t, both))
-            row.append(OVERLOADED if over else "")
-            rows.append(["not measured" if c == "n/a" else c for c in row])
-        header = ["Load (updates per second)", "Handled the load? without CDC", "Handled the load? with CDC"]
-        for name, _, _ in COMPARED:
-            header += [f"{name} without CDC", f"{name} with CDC", f"{name} added by CDC"]
-        header += [f"{NEIGHBOUR[0]} without CDC", f"{NEIGHBOUR[0]} with CDC",
-                   f"Change table kept for {ST.CDC_RETENTION_MINUTES // 1440} days (GB)",
-                   f"Extra monthly cost ({self.r.currency or 'USD'})", "Note"]
-        self.w("Each figure is the average over the rounds that ran both without and with CDC (where only one side ran, "
-               "over its own rounds). \"Added by CDC\" is "
-               "with minus without; the brackets give its lowest and highest value in a single round. \"Within "
-               "run-to-run variation\" means the difference is not larger than how much the same setup varied from "
-               "round to round, so it cannot be told apart from chance. \"Handled the load\" means at least 95% of the "
-               "requested updates per second, with no errors and nothing dropped. KB = 1,000 bytes, GB = 10^9 bytes.", "")
-        self.w(*table(header, rows))
+            cells["storage"] = [f(ST.retained_bytes(rng.mean, t, retention_s) / ST.GB, 2) if rng and rng.n
+                                else "not measured", self.monthly_cell(t, both)]
+            cells = {k: ["not measured" if c == "n/a" else c for c in v] for k, v in cells.items()}
+            loads.append((t, over, cells))
+
         self.w("## What this means", "", *self.meaning(rid, by, best, ct, retention_s), "")
+        self.w("## The measurements", "",
+               "How to read the tables. Each figure is the average over the rounds that ran both without and with CDC "
+               "(where only one side ran, over its own rounds). \"Added by CDC\" is with minus without; the brackets "
+               "give its lowest and highest value in a single round. \"Within run-to-run variation\" means the "
+               "difference is not larger than how much the same setup varied from round to round, so it cannot be "
+               "told apart from chance. KB = 1,000 bytes, GB = 10^9 bytes.", "")
+        load_col = "Load (updates per second)"
+        mark = lambda t, over: f"{t:,}" + (f" ({OVERLOADED_SHORT})" if over else "")
+        any_over = any(over for _, over, _ in loads)
+
+        self.w("### Handled the load?", "", EXPLAIN["handled"], "")
+        self.w(*table([load_col, "Without CDC", "With CDC", "Note"],
+                      [[f"{t:,}", *c["handled"], OVERLOADED_SHORT if over else ""] for t, over, c in loads]))
+        if any_over:
+            self.w(f"Note: {OVERLOADED}. At such a load at least one side could not keep up, so its figures describe "
+                   "a system under strain.", "")
+        for name, _, _ in METRIC_ORDER:
+            self.w(f"### {name}", "", EXPLAIN[name], "")
+            self.w(*table([load_col, "Without CDC", "With CDC", "Added by CDC"],
+                          [[mark(t, over), *c[name]] for t, over, c in loads]))
+        self.w("### Storage and cost", "", EXPLAIN["storage"], "")
+        self.w(*table(["Load", f"Change table kept for {ST.CDC_RETENTION_MINUTES // 1440} days (GB)",
+                       f"Extra monthly cost ({self.r.currency or 'USD'})"],
+                      [[mark(t, over), *c["storage"]] for t, over, c in loads]))
         self.w("## How sure are we", "", *self.certainty(run, best), "")
 
     def monthly_cell(self, t: int, both: bool) -> str:
@@ -295,8 +333,8 @@ class Summary:
         size_text = (f"One pool size ({', '.join(map(str, sizes))} vCores) was measured; other sizes are extrapolated"
                      if len(sizes) == 1 else "Pool sizes other than those measured are extrapolated")
         return [first,
-                "- Measured: the handled-load, log, CPU, log write rate and response time columns, read from the "
-                "databases and the load generator during the run. Calculated: the change-table size (measured bytes "
+                "- Measured: every table except \"Storage and cost\", read from the databases and the load generator "
+                "during the run. Calculated: the change-table size (measured bytes "
                 "per change, times the load, times 3 days). Extrapolated: the monthly cost, which assumes the load "
                 "runs all day, every day, takes unmeasured pool sizes from documented limits, and counts backup "
                 "storage at its upper bound.",
